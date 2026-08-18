@@ -1,0 +1,65 @@
+name: Build RadioApp 4.0.6 for Windows 7
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'recovery/3.58/recovered-source/**'
+      - 'web/**'
+      - 'windows-7-x64/**'
+      - '.github/workflows/build-win7.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-win7:
+    name: Windows 7 SP1 x64 compatibility build
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            6.0.x
+
+      - name: Publish Windows 7 x64 package
+        shell: pwsh
+        run: |
+          dotnet publish recovery/3.58/recovered-source/RadioApp.csproj `
+            -c Release `
+            -f net6.0-windows7.0 `
+            -r win-x64 `
+            --self-contained true `
+            -p:RuntimeFrameworkVersion=6.0.36 `
+            -o windows-7-x64/publish
+
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'windows-7-x64/publish/RadioApp.exe')) {
+            throw 'RadioApp.exe was not produced.'
+          }
+          Get-ChildItem 'windows-7-x64/publish' | Select-Object Name, Length
+
+      - name: Package Windows 7 build
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path 'windows-7-x64/publish/*' `
+            -DestinationPath 'RadioApp-4.0.6-Windows7-x64.zip' `
+            -Force
+
+      - name: Upload Windows 7 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RadioApp-4.0.6-Windows7-x64
+          path: RadioApp-4.0.6-Windows7-x64.zip
+          if-no-files-found: error
