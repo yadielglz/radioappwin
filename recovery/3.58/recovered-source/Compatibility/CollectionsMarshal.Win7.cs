@@ -1,4 +1,4 @@
-#if NET6_0
+#if NET6_0_WINDOWS
 global using CollectionsMarshal = RadioApp.Compatibility.CollectionsMarshalCompat;
 #endif
 
@@ -7,7 +7,7 @@ using System.Collections.Generic;
 
 namespace RadioApp.Compatibility;
 
-#if NET6_0
+#if NET6_0_WINDOWS
 internal static class CollectionsMarshalCompat
 {
     public static Span<T> AsSpan<T>(List<T> list)
