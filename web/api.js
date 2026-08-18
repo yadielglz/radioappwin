@@ -1,7 +1,7 @@
 /**
  * RadioApp Web Control Room - API & WebSocket Bridge
  * Handles real-time communication with the C# RadioApp daemon.
- * Queries live SQLite database and settings on page load and over WebSockets.
+ * Queries live SQLite database, real Windows filesystem drives & directories.
  */
 
 class RadioApiClient {
@@ -16,9 +16,7 @@ class RadioApiClient {
   }
 
   init() {
-    // Initial fast fetch via HTTP REST API
     this.fetchInitialState();
-    // Connect live WebSockets for streaming state
     this.connectWebSocket();
   }
 
@@ -27,11 +25,78 @@ class RadioApiClient {
       const res = await fetch('/api/state');
       if (res.ok) {
         const payload = await res.json();
-        console.log('[RadioApp API] Received real initial state from C# backend:', payload);
         this.emit('stateSync', payload.data || payload);
       }
     } catch (e) {
       console.warn('[RadioApp API] Initial HTTP state fetch failed. Awaiting WebSocket...');
+    }
+  }
+
+  async fetchDrives() {
+    try {
+      const res = await fetch('/api/drives');
+      if (res.ok) {
+        const json = await res.json();
+        return json.drives || [];
+      }
+    } catch (e) {
+      console.error('[RadioApp API] Failed to fetch drives:', e);
+    }
+    return [];
+  }
+
+  async browseDirectory(path) {
+    try {
+      const url = `/api/browse?path=${encodeURIComponent(path || '')}`;
+      const res = await fetch(url);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.error('[RadioApp API] Failed to browse directory:', e);
+    }
+    return { success: false, message: 'Server unreachable' };
+  }
+
+  async saveSettings(settingsObj) {
+    try {
+      const res = await fetch('/api/settings/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settingsObj)
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[RadioApp API] Failed to save settings:', e);
+      return false;
+    }
+  }
+
+  async addWatchedFolder(folder) {
+    try {
+      const res = await fetch('/api/folders/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder })
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[RadioApp API] Failed to add watched folder:', e);
+      return false;
+    }
+  }
+
+  async removeWatchedFolder(folder) {
+    try {
+      const res = await fetch('/api/folders/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder })
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[RadioApp API] Failed to remove watched folder:', e);
+      return false;
     }
   }
 
@@ -98,8 +163,6 @@ class RadioApiClient {
     const data = JSON.stringify({ action, ...payload });
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(data);
-    } else {
-      console.warn('[RadioApp API] WebSocket offline. Queuing command:', action);
     }
   }
 

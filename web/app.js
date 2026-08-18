@@ -767,40 +767,41 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ----------------------------------------------------
-  // Interactive Server Folder Browser
+  // Real Windows Server & Network Drive Folder Browser
   // ----------------------------------------------------
   function initFolderBrowser() {
     els.btnCloseBrowserModal.addEventListener('click', () => els.folderBrowserModal.classList.remove('open'));
     els.btnCancelBrowser.addEventListener('click', () => els.folderBrowserModal.classList.remove('open'));
 
-    // Drive selector
-    els.driveButtons.querySelectorAll('.btn-drive').forEach(btn => {
-      btn.addEventListener('click', () => {
-        els.driveButtons.querySelectorAll('.btn-drive').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        state.browserState.currentDrive = btn.dataset.drive;
-        state.browserState.currentPath = btn.dataset.drive;
-        state.browserState.selectedPath = btn.dataset.drive;
+    // Allow user to manually type path and hit Enter
+    els.txtSelectedBrowserPath.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        state.browserState.currentPath = els.txtSelectedBrowserPath.value.trim();
+        state.browserState.selectedPath = state.browserState.currentPath;
         renderBrowserDirectory();
-      });
+      }
     });
 
     // Confirm button
-    els.btnConfirmSelectFolder.addEventListener('click', () => {
-      const path = state.browserState.selectedPath;
+    els.btnConfirmSelectFolder.addEventListener('click', async () => {
+      const path = els.txtSelectedBrowserPath.value.trim() || state.browserState.selectedPath;
+      if (!path) return;
+
       if (state.browserState.targetType === 'sweeper') {
         state.sweeperRules.folder = path;
         els.txtSweeperFolderPath.value = path;
         document.getElementById('cfgSweeperFolder').value = path;
+        await window.radioApi.saveSettings({ sweeperFolder: path });
       } else if (state.browserState.targetType === 'radioid') {
         state.radioIdRules.folder = path;
         els.txtRadioIdFolderPath.value = path;
         document.getElementById('cfgRadioIdFolder').value = path;
+        await window.radioApi.saveSettings({ radioIdFolder: path });
       } else if (state.browserState.targetType === 'library') {
         if (!state.watchedFolders.includes(path)) {
           state.watchedFolders.push(path);
           renderWatchedFolders();
-          window.radioApi.rescanLibrary();
+          await window.radioApi.addWatchedFolder(path);
         }
       }
       updateRuleUI();
@@ -808,27 +809,54 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  function openFolderBrowser(targetType) {
+  async function openFolderBrowser(targetType) {
     state.browserState.targetType = targetType;
     if (targetType === 'sweeper') {
       els.browserModalTitle.textContent = 'Select Jingles & Sweepers Directory';
-      state.browserState.selectedPath = state.sweeperRules.folder || 'D:\\Radio\\Sweepers';
+      state.browserState.selectedPath = state.sweeperRules.folder || 'C:\\';
     } else if (targetType === 'radioid') {
       els.browserModalTitle.textContent = 'Select Radio IDs Directory';
-      state.browserState.selectedPath = state.radioIdRules.folder || 'D:\\Radio\\RadioIDs';
+      state.browserState.selectedPath = state.radioIdRules.folder || 'C:\\';
     } else {
       els.browserModalTitle.textContent = 'Select Music Library Folder to Watch';
-      state.browserState.selectedPath = 'Z:\\Music';
+      state.browserState.selectedPath = (state.watchedFolders && state.watchedFolders[0]) || 'C:\\';
     }
 
     state.browserState.currentPath = state.browserState.selectedPath;
-    renderBrowserDirectory();
+    await loadRealDrives();
+    await renderBrowserDirectory();
     els.folderBrowserModal.classList.add('open');
   }
 
-  function renderBrowserDirectory() {
+  async function loadRealDrives() {
+    const drives = await window.radioApi.fetchDrives();
+    if (!drives || drives.length === 0) return;
+
+    els.driveButtons.innerHTML = '';
+    drives.forEach(d => {
+      const btn = document.createElement('button');
+      const isCur = state.browserState.currentPath.toUpperCase().startsWith(d.name.toUpperCase());
+      btn.className = `btn-drive ${isCur ? 'active' : ''}`;
+      btn.dataset.drive = d.name;
+      const label = d.label ? ` (${d.label})` : (d.driveType === 'Network' ? ' (Network)' : '');
+      btn.textContent = `${d.name}${label}`;
+
+      btn.addEventListener('click', async () => {
+        els.driveButtons.querySelectorAll('.btn-drive').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        state.browserState.currentDrive = d.name;
+        state.browserState.currentPath = d.name;
+        state.browserState.selectedPath = d.name;
+        await renderBrowserDirectory();
+      });
+
+      els.driveButtons.appendChild(btn);
+    });
+  }
+
+  async function renderBrowserDirectory() {
     const p = state.browserState.currentPath;
-    els.txtSelectedBrowserPath.value = state.browserState.selectedPath;
+    els.txtSelectedBrowserPath.value = state.browserState.selectedPath || p;
 
     // Breadcrumbs
     els.breadcrumbBar.innerHTML = '';
@@ -840,53 +868,78 @@ document.addEventListener('DOMContentLoaded', () => {
       span.style.cursor = 'pointer';
       span.textContent = i === 0 ? part + '\\' : part + '\\ ';
       const targetP = accum.replace(/\\$/, '');
-      span.addEventListener('click', () => {
+      span.addEventListener('click', async () => {
         state.browserState.currentPath = targetP.includes('\\') ? targetP : targetP + '\\';
         state.browserState.selectedPath = state.browserState.currentPath;
-        renderBrowserDirectory();
+        await renderBrowserDirectory();
       });
       els.breadcrumbBar.appendChild(span);
     });
 
-    // Subdirectories list
+    // Query real Windows VM filesystem
+    els.directoryList.innerHTML = '<li style="padding:16px;text-align:center;color:var(--text-muted);">Loading real directories from Windows VM...</li>';
+    const res = await window.radioApi.browseDirectory(p);
+
     els.directoryList.innerHTML = '';
 
-    if (p !== 'C:\\' && p !== 'D:\\' && p !== 'Z:\\') {
+    if (!res || !res.success) {
+      els.directoryList.innerHTML = `<li style="padding:16px;color:#ef4444;font-size:0.85rem;">⚠️ ${res?.message || 'Unable to access directory.'}</li>`;
+      return;
+    }
+
+    if (res.parentPath) {
       const upLi = document.createElement('li');
       upLi.className = 'dir-item';
-      upLi.innerHTML = `<span>⬆️</span> <strong>.. (Up One Level)</strong>`;
-      upLi.addEventListener('click', () => {
-        const lastSlash = p.lastIndexOf('\\');
-        const parentP = lastSlash > 2 ? p.substring(0, lastSlash) : p.substring(0, 3);
-        state.browserState.currentPath = parentP;
-        state.browserState.selectedPath = parentP;
-        renderBrowserDirectory();
+      upLi.innerHTML = `<span>⬆️</span> <strong>.. (Up to ${res.parentPath})</strong>`;
+      upLi.addEventListener('click', async () => {
+        state.browserState.currentPath = res.parentPath;
+        state.browserState.selectedPath = res.parentPath;
+        await renderBrowserDirectory();
       });
       els.directoryList.appendChild(upLi);
     }
 
-    const subdirs = state.serverFileSystem[p] || ['SubFolder01', 'SubFolder02', 'Archive'];
-    subdirs.forEach(folderName => {
-      const fullSubPath = p.endsWith('\\') ? p + folderName : p + '\\' + folderName;
-      const li = document.createElement('li');
-      li.className = `dir-item ${state.browserState.selectedPath === fullSubPath ? 'selected' : ''}`;
-      li.innerHTML = `<span>📁</span> <span>${folderName}</span>`;
+    if ((!res.directories || res.directories.length === 0) && (!res.audioFiles || res.audioFiles.length === 0)) {
+      const emptyLi = document.createElement('li');
+      emptyLi.style.padding = '12px';
+      emptyLi.style.color = 'var(--text-muted)';
+      emptyLi.style.fontSize = '0.8rem';
+      emptyLi.textContent = '(Empty folder or no subdirectories)';
+      els.directoryList.appendChild(emptyLi);
+    }
 
-      li.addEventListener('click', () => {
-        state.browserState.selectedPath = fullSubPath;
-        els.txtSelectedBrowserPath.value = fullSubPath;
-        els.directoryList.querySelectorAll('.dir-item').forEach(d => d.classList.remove('selected'));
-        li.classList.add('selected');
+    if (res.directories) {
+      res.directories.forEach(dir => {
+        const li = document.createElement('li');
+        li.className = `dir-item ${state.browserState.selectedPath === dir.fullPath ? 'selected' : ''}`;
+        li.innerHTML = `<span>📁</span> <span style="font-weight:600;">${dir.name}</span>`;
+
+        li.addEventListener('click', () => {
+          state.browserState.selectedPath = dir.fullPath;
+          els.txtSelectedBrowserPath.value = dir.fullPath;
+          els.directoryList.querySelectorAll('.dir-item').forEach(d => d.classList.remove('selected'));
+          li.classList.add('selected');
+        });
+
+        li.addEventListener('dblclick', async () => {
+          state.browserState.currentPath = dir.fullPath;
+          state.browserState.selectedPath = dir.fullPath;
+          await renderBrowserDirectory();
+        });
+
+        els.directoryList.appendChild(li);
       });
+    }
 
-      li.addEventListener('dblclick', () => {
-        state.browserState.currentPath = fullSubPath;
-        state.browserState.selectedPath = fullSubPath;
-        renderBrowserDirectory();
+    if (res.audioFiles && res.audioFiles.length > 0) {
+      res.audioFiles.slice(0, 50).forEach(file => {
+        const li = document.createElement('li');
+        li.className = 'dir-item';
+        li.style.opacity = '0.75';
+        li.innerHTML = `<span>🎵</span> <span style="font-size:0.8rem;">${file.name}</span>`;
+        els.directoryList.appendChild(li);
       });
-
-      els.directoryList.appendChild(li);
-    });
+    }
   }
 
   // ----------------------------------------------------

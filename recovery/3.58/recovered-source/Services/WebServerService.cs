@@ -15,7 +15,8 @@ namespace RadioApp.Services;
 
 /// <summary>
 /// Lightweight embedded HTTP & WebSocket server for headless web studio control.
-/// Serves static web assets from the 'web/' directory and routes real-time commands to MainViewModel.
+/// Serves static web assets from the 'web/' directory and provides real file browsing,
+/// live settings mutation, and real-time state synchronization with MainViewModel.
 /// </summary>
 public class WebServerService : IDisposable
 {
@@ -26,6 +27,8 @@ public class WebServerService : IDisposable
 	private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, WebSocket> _sockets = new();
 	private bool _isDisposed;
 
+	private static readonly string[] AudioExtensions = new[] { ".mp3", ".wav", ".aac", ".m4a", ".flac", ".ogg", ".wma" };
+
 	public int Port { get; private set; }
 
 	public WebServerService(MainViewModel mainViewModel, int port = 5000, string? webRoot = null)
@@ -34,7 +37,7 @@ public class WebServerService : IDisposable
 		Port = port;
 		_webRoot = webRoot ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "web");
 
-		// Subscribe to MainViewModel & Library updates to broadcast changes to connected web clients
+		// Subscribe to MainViewModel & Library updates
 		_mainViewModel.PropertyChanged += (s, e) => _ = BroadcastStateAsync();
 		_mainViewModel.Queue.CollectionChanged += (s, e) => _ = BroadcastStateAsync();
 		if (_mainViewModel.Library != null)
@@ -156,7 +159,7 @@ public class WebServerService : IDisposable
 	{
 		try
 		{
-			// Enable CORS for external access
+			// Enable CORS for LAN access
 			context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
 			context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 			context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
@@ -209,7 +212,6 @@ public class WebServerService : IDisposable
 
 		try
 		{
-			// Send full initial state sync immediately on connect
 			await SendStateToSocketAsync(socket);
 
 			while (socket.State == WebSocketState.Open && !ct.IsCancellationRequested && !_isDisposed)
@@ -397,9 +399,157 @@ public class WebServerService : IDisposable
 	private async Task HandleApiRequestAsync(HttpListenerContext context, string path)
 	{
 		context.Response.ContentType = "application/json";
+		string subPath = path.Substring("api".Length).Trim('/');
+
+		// 1. GET /api/drives -> Enumerate all physical and mapped network drives
+		if (subPath.Equals("drives", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "GET")
+		{
+			var drives = DriveInfo.GetDrives().Select(d => new
+			{
+				name = d.Name,
+				driveType = d.DriveType.ToString(),
+				isReady = d.IsReady,
+				label = d.IsReady ? d.VolumeLabel : string.Empty,
+				totalSize = d.IsReady ? d.TotalSize : 0,
+				availableFreeSpace = d.IsReady ? d.AvailableFreeSpace : 0
+			}).ToList();
+
+			string jsonDrives = JsonSerializer.Serialize(new { success = true, drives });
+			await WriteJsonResponseAsync(context, jsonDrives);
+			return;
+		}
+
+		// 2. GET /api/browse?path=... -> Real directory browser on Windows Host / TrueNAS mount
+		if (subPath.Equals("browse", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "GET")
+		{
+			string targetPath = context.Request.QueryString["path"] ?? string.Empty;
+			if (string.IsNullOrWhiteSpace(targetPath))
+			{
+				var firstDrive = DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady);
+				targetPath = firstDrive?.Name ?? @"C:\";
+			}
+
+			try
+			{
+				if (!Directory.Exists(targetPath))
+				{
+					context.Response.StatusCode = 404;
+					await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = false, message = "Directory not found." }));
+					return;
+				}
+
+				var dirInfo = new DirectoryInfo(targetPath);
+				var subDirs = dirInfo.GetDirectories()
+					.Where(d => (d.Attributes & FileAttributes.Hidden) == 0 && (d.Attributes & FileAttributes.System) == 0)
+					.Select(d => new { name = d.Name, fullPath = d.FullName })
+					.OrderBy(d => d.name)
+					.ToList();
+
+				var files = dirInfo.GetFiles()
+					.Where(f => AudioExtensions.Contains(f.Extension.ToLowerInvariant()))
+					.Select(f => new { name = f.Name, fullPath = f.FullName, size = f.Length })
+					.OrderBy(f => f.name)
+					.ToList();
+
+				var result = new
+				{
+					success = true,
+					currentPath = dirInfo.FullName,
+					parentPath = dirInfo.Parent?.FullName,
+					directories = subDirs,
+					audioFiles = files
+				};
+
+				await WriteJsonResponseAsync(context, JsonSerializer.Serialize(result));
+			}
+			catch (UnauthorizedAccessException)
+			{
+				await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = false, message = "Access Denied by Windows Security." }));
+			}
+			catch (Exception ex)
+			{
+				await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = false, message = ex.Message }));
+			}
+			return;
+		}
+
+		// 3. POST /api/settings/update -> Persist settings changes
+		if (subPath.Equals("settings/update", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "POST")
+		{
+			using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding);
+			string body = await reader.ReadToEndAsync();
+			using var doc = JsonDocument.Parse(body);
+			var root = doc.RootElement;
+
+			if (root.TryGetProperty("sweeperFolder", out var sf)) _mainViewModel.SweeperFolder = sf.GetString() ?? _mainViewModel.SweeperFolder;
+			if (root.TryGetProperty("radioIdFolder", out var rf)) _mainViewModel.RadioIdFolder = rf.GetString() ?? _mainViewModel.RadioIdFolder;
+			if (root.TryGetProperty("sweeperMin", out var smin)) _mainViewModel.SweeperMinSongs = smin.GetInt32();
+			if (root.TryGetProperty("sweeperMax", out var smax)) _mainViewModel.SweeperMaxSongs = smax.GetInt32();
+			if (root.TryGetProperty("sweepersEnabled", out var se)) _mainViewModel.SweepersEnabled = se.GetBoolean();
+			if (root.TryGetProperty("radioIdMinute", out var rm)) _mainViewModel.RadioIdMinute = rm.GetInt32();
+			if (root.TryGetProperty("toleranceBefore", out var tb)) _mainViewModel.RadioIdToleranceBeforeMinutes = tb.GetInt32();
+			if (root.TryGetProperty("toleranceAfter", out var ta)) _mainViewModel.RadioIdToleranceAfterMinutes = ta.GetInt32();
+			if (root.TryGetProperty("radioIdsEnabled", out var re)) _mainViewModel.RadioIdsEnabled = re.GetBoolean();
+			if (root.TryGetProperty("hourlyTagRules", out var hr)) _mainViewModel.AutoDjHourlyTagRules = hr.GetString() ?? _mainViewModel.AutoDjHourlyTagRules;
+			if (root.TryGetProperty("autoDjDefaultTag", out var dt)) _mainViewModel.AutoDjDefaultTag = dt.GetString() ?? _mainViewModel.AutoDjDefaultTag;
+
+			await BroadcastStateAsync();
+			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true }));
+			return;
+		}
+
+		// 4. POST /api/folders/add -> Add watched folder to SQLite library
+		if (subPath.Equals("folders/add", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "POST")
+		{
+			using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding);
+			string body = await reader.ReadToEndAsync();
+			using var doc = JsonDocument.Parse(body);
+			if (doc.RootElement.TryGetProperty("folder", out var folderEl))
+			{
+				string folder = folderEl.GetString() ?? string.Empty;
+				if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+				{
+					if (_mainViewModel.Library != null && !_mainViewModel.Library.WatchedFolders.Contains(folder))
+					{
+						_mainViewModel.Library.WatchedFolders.Add(folder);
+						_mainViewModel.Library.RescanWatchedFoldersCommand?.Execute(null);
+					}
+				}
+			}
+			await BroadcastStateAsync();
+			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true }));
+			return;
+		}
+
+		// 5. POST /api/folders/remove
+		if (subPath.Equals("folders/remove", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "POST")
+		{
+			using var reader = new StreamReader(context.Request.InputStream, context.Request.ContentEncoding);
+			string body = await reader.ReadToEndAsync();
+			using var doc = JsonDocument.Parse(body);
+			if (doc.RootElement.TryGetProperty("folder", out var folderEl))
+			{
+				string folder = folderEl.GetString() ?? string.Empty;
+				if (_mainViewModel.Library != null && _mainViewModel.Library.WatchedFolders.Contains(folder))
+				{
+					_mainViewModel.Library.WatchedFolders.Remove(folder);
+				}
+			}
+			await BroadcastStateAsync();
+			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true }));
+			return;
+		}
+
+		// Default /api/state fallback
 		var stateObj = GetFullStateObject();
 		string json = JsonSerializer.Serialize(stateObj);
+		await WriteJsonResponseAsync(context, json);
+	}
+
+	private static async Task WriteJsonResponseAsync(HttpListenerContext context, string json)
+	{
 		byte[] data = Encoding.UTF8.GetBytes(json);
+		context.Response.ContentType = "application/json; charset=utf-8";
 		context.Response.ContentLength64 = data.Length;
 		await context.Response.OutputStream.WriteAsync(data, 0, data.Length);
 	}
