@@ -675,6 +675,61 @@
       </div>
       <div class="modal-body">
         
+        <!-- SHOUTcast / Icecast Stream Server Configuration -->
+        <div class="settings-section">
+          <h4>📡 SHOUTcast / Icecast Streaming Server</h4>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Server Type</label>
+              <select id="cfgStreamServerType" class="form-input font-mono">
+                <option value="Shoutcast">SHOUTcast (v1 / v2)</option>
+                <option value="Icecast">Icecast (v2 Mountpoint)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Server Host / IP</label>
+              <input type="text" id="cfgStreamHost" class="form-input font-mono" placeholder="e.g. localhost, stream.glztech.com, 192.168.1.10">
+            </div>
+            <div class="form-group">
+              <label>Server Port</label>
+              <input type="number" id="cfgStreamPort" class="form-input font-mono" value="8000">
+            </div>
+            <div class="form-group">
+              <label>Mountpoint / Stream Path</label>
+              <input type="text" id="cfgStreamMount" class="form-input font-mono" placeholder="radio or /live">
+            </div>
+            <div class="form-group">
+              <label>Stream Username</label>
+              <input type="text" id="cfgStreamUsername" class="form-input font-mono" value="source">
+            </div>
+            <div class="form-group">
+              <label>Stream Password</label>
+              <input type="password" id="cfgStreamPassword" class="form-input font-mono" placeholder="Source password">
+            </div>
+            <div class="form-group">
+              <label>Audio Bitrate</label>
+              <select id="cfgStreamBitrate" class="form-input font-mono">
+                <option value="64">64 kbps (Low Bandwidth)</option>
+                <option value="128" selected>128 kbps (Standard Broadcast)</option>
+                <option value="192">192 kbps (High Quality)</option>
+                <option value="256">256 kbps (Studio Quality)</option>
+                <option value="320">320 kbps (Lossless MP3/AAC)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>SHOUTcast Stream ID (v2)</label>
+              <input type="number" id="cfgStreamShoutcastId" class="form-input font-mono" value="1" min="1" max="99">
+            </div>
+            <div class="form-group" style="grid-column: span 2;">
+              <label>Auto-Connect Stream on Engine Startup</label>
+              <select id="cfgAutoConnectStream" class="form-input">
+                <option value="true">Enabled (Immediately Go On-Air on Startup)</option>
+                <option value="false">Disabled (Manual Stream Connect)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
         <!-- AutoDJ & Hourly Rotation Rules String Format -->
         <div class="settings-section">
           <h4>AutoDJ & Hour-Filling Rules</h4>

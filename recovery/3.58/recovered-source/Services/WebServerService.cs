@@ -351,6 +351,19 @@ public class WebServerService : IDisposable
 					autoDjDefaultTag = _mainViewModel.AutoDjDefaultTag,
 					hourlyTagRules = _mainViewModel.AutoDjHourlyTagRules
 				},
+				streamConfig = new
+				{
+					serverType = _mainViewModel.StreamConfig.ServerType.ToString(),
+					host = _mainViewModel.StreamConfig.Host,
+					port = _mainViewModel.StreamConfig.Port,
+					mount = _mainViewModel.StreamConfig.Mount,
+					username = _mainViewModel.StreamConfig.Username,
+					password = _mainViewModel.StreamConfig.Password,
+					bitrate = _mainViewModel.StreamConfig.Bitrate,
+					shoutcastStreamId = _mainViewModel.StreamConfig.ShoutcastStreamId,
+					autoConnect = _mainViewModel.AutoConnectStreamOnStartup,
+					endpointText = _mainViewModel.StreamEndpointText
+				},
 				queue = queueItems,
 				library = libraryItems,
 				watchedFolders = watchedFolders,
@@ -494,6 +507,21 @@ public class WebServerService : IDisposable
 			if (root.TryGetProperty("radioIdsEnabled", out var re)) _mainViewModel.RadioIdsEnabled = re.GetBoolean();
 			if (root.TryGetProperty("hourlyTagRules", out var hr)) _mainViewModel.AutoDjHourlyTagRules = hr.GetString() ?? _mainViewModel.AutoDjHourlyTagRules;
 			if (root.TryGetProperty("autoDjDefaultTag", out var dt)) _mainViewModel.AutoDjDefaultTag = dt.GetString() ?? _mainViewModel.AutoDjDefaultTag;
+
+			// Stream Server Details (SHOUTcast / Icecast)
+			if (root.TryGetProperty("streamServerType", out var st))
+			{
+				if (Enum.TryParse<StreamServerType>(st.GetString(), true, out var parsedType))
+					_mainViewModel.StreamConfig.ServerType = parsedType;
+			}
+			if (root.TryGetProperty("streamHost", out var sh)) _mainViewModel.StreamConfig.Host = sh.GetString() ?? _mainViewModel.StreamConfig.Host;
+			if (root.TryGetProperty("streamPort", out var sp)) _mainViewModel.StreamConfig.Port = sp.GetInt32();
+			if (root.TryGetProperty("streamMount", out var sm)) _mainViewModel.StreamConfig.Mount = sm.GetString() ?? _mainViewModel.StreamConfig.Mount;
+			if (root.TryGetProperty("streamUsername", out var su)) _mainViewModel.StreamConfig.Username = su.GetString() ?? _mainViewModel.StreamConfig.Username;
+			if (root.TryGetProperty("streamPassword", out var spw)) _mainViewModel.StreamConfig.Password = spw.GetString() ?? _mainViewModel.StreamConfig.Password;
+			if (root.TryGetProperty("streamBitrate", out var sb)) _mainViewModel.StreamConfig.Bitrate = sb.GetInt32();
+			if (root.TryGetProperty("streamShoutcastStreamId", out var ssid)) _mainViewModel.StreamConfig.ShoutcastStreamId = ssid.GetInt32();
+			if (root.TryGetProperty("autoConnectStreamOnStartup", out var ac)) _mainViewModel.AutoConnectStreamOnStartup = ac.GetBoolean();
 
 			await BroadcastStateAsync();
 			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true }));

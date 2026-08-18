@@ -333,6 +333,37 @@ document.addEventListener('DOMContentLoaded', () => {
         updateRotationStatus();
       }
 
+      // Stream Server Details (SHOUTcast / Icecast)
+      if (data.streamConfig) {
+        const sc = data.streamConfig;
+        const sType = document.getElementById('cfgStreamServerType');
+        if (sType && sc.serverType) sType.value = sc.serverType.toLowerCase().includes('icecast') ? 'Icecast' : 'Shoutcast';
+
+        const sHost = document.getElementById('cfgStreamHost');
+        if (sHost && sc.host !== undefined) sHost.value = sc.host;
+
+        const sPort = document.getElementById('cfgStreamPort');
+        if (sPort && sc.port !== undefined) sPort.value = sc.port;
+
+        const sMount = document.getElementById('cfgStreamMount');
+        if (sMount && sc.mount !== undefined) sMount.value = sc.mount;
+
+        const sUser = document.getElementById('cfgStreamUsername');
+        if (sUser && sc.username !== undefined) sUser.value = sc.username;
+
+        const sPass = document.getElementById('cfgStreamPassword');
+        if (sPass && sc.password !== undefined) sPass.value = sc.password;
+
+        const sBitrate = document.getElementById('cfgStreamBitrate');
+        if (sBitrate && sc.bitrate !== undefined) sBitrate.value = sc.bitrate.toString();
+
+        const sId = document.getElementById('cfgStreamShoutcastId');
+        if (sId && sc.shoutcastStreamId !== undefined) sId.value = sc.shoutcastStreamId;
+
+        const sAuto = document.getElementById('cfgAutoConnectStream');
+        if (sAuto && sc.autoConnect !== undefined) sAuto.value = sc.autoConnect ? 'true' : 'false';
+      }
+
       // Categories
       if (Array.isArray(data.categories) && data.categories.length > 0) {
         els.categoryFilterSelect.innerHTML = '<option value="ALL">All Categories</option>';
@@ -1296,7 +1327,7 @@ document.addEventListener('DOMContentLoaded', () => {
     els.trackEditModal.classList.remove('open');
   }
 
-  function saveSettings() {
+  async function saveSettings() {
     state.sweeperRules.enabled = document.getElementById('cfgSweepersEnabled').value === 'true';
     state.sweeperRules.folder = document.getElementById('cfgSweeperFolder').value;
     state.sweeperRules.minSongs = parseInt(document.getElementById('cfgSweeperMin').value, 10);
@@ -1311,15 +1342,51 @@ document.addEventListener('DOMContentLoaded', () => {
     state.autoDjFillCurrentHour = document.getElementById('cfgFillCurrentHour').value === 'true';
     state.autoDjDefaultTag = document.getElementById('cfgDefaultTag').value.trim();
 
+    // Stream server details
+    const streamServerType = document.getElementById('cfgStreamServerType')?.value || 'Shoutcast';
+    const streamHost = document.getElementById('cfgStreamHost')?.value || 'localhost';
+    const streamPort = parseInt(document.getElementById('cfgStreamPort')?.value || '8000', 10);
+    const streamMount = document.getElementById('cfgStreamMount')?.value || 'radio';
+    const streamUsername = document.getElementById('cfgStreamUsername')?.value || 'source';
+    const streamPassword = document.getElementById('cfgStreamPassword')?.value || '';
+    const streamBitrate = parseInt(document.getElementById('cfgStreamBitrate')?.value || '128', 10);
+    const streamShoutcastStreamId = parseInt(document.getElementById('cfgStreamShoutcastId')?.value || '1', 10);
+    const autoConnectStreamOnStartup = document.getElementById('cfgAutoConnectStream')?.value === 'true';
+
     // Parse raw text rules
     const rawRules = document.getElementById('cfgHourlyTagRulesRaw').value;
     parseRawRulesString(rawRules);
+
+    // Save to C# backend (persists in settings.json)
+    await window.radioApi.saveSettings({
+      sweepersEnabled: state.sweeperRules.enabled,
+      sweeperFolder: state.sweeperRules.folder,
+      sweeperMin: state.sweeperRules.minSongs,
+      sweeperMax: state.sweeperRules.maxSongs,
+      radioIdsEnabled: state.radioIdRules.enabled,
+      radioIdFolder: state.radioIdRules.folder,
+      radioIdMinute: state.radioIdRules.targetMinute,
+      toleranceBefore: state.radioIdRules.toleranceBefore,
+      toleranceAfter: state.radioIdRules.toleranceAfter,
+      autoDjFillCurrentHour: state.autoDjFillCurrentHour,
+      autoDjDefaultTag: state.autoDjDefaultTag,
+      hourlyTagRules: rawRules,
+      streamServerType,
+      streamHost,
+      streamPort,
+      streamMount,
+      streamUsername,
+      streamPassword,
+      streamBitrate,
+      streamShoutcastStreamId,
+      autoConnectStreamOnStartup
+    });
 
     updateRuleUI();
     updateRotationStatus();
     updateHourCoverage();
     els.settingsModal.classList.remove('open');
-    alert('Station rules and configurations saved.');
+    alert('Station rules and streaming configuration saved.');
   }
 
   function parseRawRulesString(raw) {
