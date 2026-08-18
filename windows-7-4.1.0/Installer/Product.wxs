@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="RadioApp 4.1.0 for Windows 7"
+    Manufacturer="Glz Technical Services | Glz Tech"
+    Version="4.1.0"
+    UpgradeCode="{6485B742-8E8D-46A4-9EF1-41041F738C01}"
+    Scope="perMachine"
+    InstallerVersion="500">
+
+    <SummaryInformation
+      Description="RadioApp 4.1.0 Windows 7 SP1 x64 Installer"
+      Manufacturer="Glz Technical Services | Glz Tech" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of RadioApp is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="medium" />
+
+    <Icon Id="RadioAppIcon" SourceFile="../../recovery/3.58/recovered-source/Assets/RadioAppIcon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="RadioAppIcon" />
+
+    <Feature Id="MainFeature" Title="RadioApp" Level="1">
+      <ComponentGroupRef Id="PublishedFiles" />
+      <ComponentRef Id="StartMenuShortcutComponent" />
+      <ComponentRef Id="DesktopShortcutComponent" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="RadioApp" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="RadioApp">
+        <Component Id="StartMenuShortcutComponent" Guid="{0B3D2E7C-9AAF-4A62-8721-D7EC6890927B}">
+          <Shortcut Id="StartMenuShortcut"
+                    Name="RadioApp"
+                    Description="RadioApp 4.1.0 for Windows 7"
+                    Target="[INSTALLFOLDER]RadioApp.exe"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Icon="RadioAppIcon" />
+          <RemoveFolder Id="RemoveApplicationProgramsFolder" Directory="ApplicationProgramsFolder" On="uninstall" />
+          <RegistryValue Root="HKCU" Key="Software\Glz Tech\RadioApp" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcutComponent" Guid="{8B64ED2A-6467-47B8-9787-6367170C1FF5}">
+        <Shortcut Id="DesktopShortcut"
+                  Name="RadioApp"
+                  Description="RadioApp 4.1.0 for Windows 7"
+                  Target="[INSTALLFOLDER]RadioApp.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="RadioAppIcon" />
+        <RegistryValue Root="HKCU" Key="Software\Glz Tech\RadioApp" Name="DesktopShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <ComponentGroup Id="PublishedFiles" Directory="INSTALLFOLDER">
+      <Files Include="../publish/**" />
+    </ComponentGroup>
+  </Package>
+</Wix>
