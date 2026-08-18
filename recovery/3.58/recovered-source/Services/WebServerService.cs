@@ -306,11 +306,10 @@ public class WebServerService : IDisposable
 			title = item.Title,
 			artist = item.Artist,
 			album = item.Album,
-			duration = $"{(int)item.Duration.TotalMinutes:00}:{item.Duration.Seconds:00}",
+			duration = item.Duration.TotalHours >= 1.0 ? item.Duration.ToString(@"h\:mm\:ss") : item.Duration.ToString(@"m\:ss"),
 			category = item.Category,
-			year = item.Year,
-			cueIn = item.CueIn.TotalSeconds,
-			cueOut = item.CueOut.TotalSeconds
+			tags = item.Tags,
+			filePath = item.FilePath
 		}).ToList() ?? new();
 
 		var watchedFolders = _mainViewModel.Library?.WatchedFolders.ToList() ?? new();
