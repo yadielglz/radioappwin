@@ -159,10 +159,11 @@ public class WebServerService : IDisposable
 	{
 		try
 		{
-			// Enable CORS for LAN access
-			context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
-			context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-			context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+			context.Response.StatusCode = 200;
+			// Enable CORS for LAN & Cloudflare access
+			context.Response.AppendHeader("Access-Control-Allow-Origin", "*");
+			context.Response.AppendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+			context.Response.AppendHeader("Access-Control-Allow-Headers", "Content-Type");
 
 			if (context.Request.HttpMethod == "OPTIONS")
 			{
@@ -192,6 +193,7 @@ public class WebServerService : IDisposable
 		{
 			try
 			{
+				if (!context.Response.OutputStream.CanWrite) return;
 				context.Response.StatusCode = 500;
 				using StreamWriter writer = new StreamWriter(context.Response.OutputStream);
 				await writer.WriteAsync($"Internal Server Error: {ex.Message}");
