@@ -5,6 +5,7 @@ namespace Microsoft.Win32;
 
 /// <summary>
 /// Windows 7/.NET 6 compatibility shim for the OpenFolderDialog API available in newer WPF targets.
+/// Uses the classic WinForms folder picker on the legacy target.
 /// </summary>
 public sealed class OpenFolderDialog
 {
