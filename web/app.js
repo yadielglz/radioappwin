@@ -1099,8 +1099,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // ----------------------------------------------------
   function initAudioLoop() {
     let lastTime = performance.now();
+    let lastRender = 0;
 
     function frame(now) {
+      requestAnimationFrame(frame);
+
+      // Throttle to 20 FPS (~50ms) to ensure minimal CPU usage on 1-vCPU VMs
+      if (now - lastRender < 50) return;
+      lastRender = now;
+
       const delta = (now - lastTime) / 1000;
       lastTime = now;
 
@@ -1119,8 +1126,6 @@ document.addEventListener('DOMContentLoaded', () => {
       // Uptime
       state.uptimeSeconds += delta;
       els.streamUptime.textContent = formatUptime(Math.floor(state.uptimeSeconds));
-
-      requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
   }

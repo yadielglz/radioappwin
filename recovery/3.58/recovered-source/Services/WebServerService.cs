@@ -37,14 +37,31 @@ public class WebServerService : IDisposable
 		Port = port;
 		_webRoot = webRoot ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "web");
 
-		// Subscribe to MainViewModel & Library updates
-		_mainViewModel.PropertyChanged += (s, e) => _ = BroadcastStateAsync();
-		_mainViewModel.Queue.CollectionChanged += (s, e) => _ = BroadcastStateAsync();
+		// Debounced lightweight timer for playback updates (500ms interval, only runs when clients are connected)
+		_playerUpdateTimer = new Timer(OnPlayerUpdateTimerTick, null, 500, 500);
+
+		// Full state broadcasts only on structural changes (Library, Watched Folders, Queue)
+		_mainViewModel.Queue.CollectionChanged += (s, e) => _ = RequestPlayerUpdateAsync();
 		if (_mainViewModel.Library != null)
 		{
-			_mainViewModel.Library.Items.CollectionChanged += (s, e) => _ = BroadcastStateAsync();
-			_mainViewModel.Library.WatchedFolders.CollectionChanged += (s, e) => _ = BroadcastStateAsync();
+			_mainViewModel.Library.Items.CollectionChanged += (s, e) => _ = BroadcastFullStateAsync();
+			_mainViewModel.Library.WatchedFolders.CollectionChanged += (s, e) => _ = BroadcastFullStateAsync();
 		}
+	}
+
+	private readonly Timer? _playerUpdateTimer;
+	private volatile bool _playerUpdatePending;
+
+	private void OnPlayerUpdateTimerTick(object? state)
+	{
+		if (_sockets.IsEmpty || _isDisposed) return;
+		_ = BroadcastPlayerUpdateAsync();
+	}
+
+	private Task RequestPlayerUpdateAsync()
+	{
+		if (_sockets.IsEmpty || _isDisposed) return Task.CompletedTask;
+		return BroadcastPlayerUpdateAsync();
 	}
 
 	public void Start()
@@ -374,7 +391,72 @@ public class WebServerService : IDisposable
 		};
 	}
 
-	private async Task BroadcastStateAsync()
+	public object GetPlayerStateObject()
+	{
+		bool isLive = _mainViewModel.StreamStatus.Contains("Live", StringComparison.OrdinalIgnoreCase) ||
+		              _mainViewModel.StreamStatus.Contains("Connected", StringComparison.OrdinalIgnoreCase);
+
+		var queueItems = _mainViewModel.Queue.Select((item, idx) => new
+		{
+			id = item.Id,
+			title = item.Title,
+			artist = item.Artist,
+			album = item.Album,
+			duration = item.Duration.TotalSeconds > 0 ? item.Duration.TotalSeconds : 180,
+			category = item.Category,
+			type = item.IsStationIdCue ? "radioid" : (item.IsSweeperCue ? "sweeper" : "song")
+		}).ToList();
+
+		return new
+		{
+			type = "STATE_SYNC",
+			data = new
+			{
+				isLive = isLive,
+				streamStatus = _mainViewModel.StreamStatus,
+				activityStatus = _mainViewModel.ActivityStatus,
+				headerStatus = _mainViewModel.HeaderStatus,
+				crossfade = _mainViewModel.Crossfade,
+				deckA = new
+				{
+					title = _mainViewModel.DeckA?.TrackTitle ?? "No track loaded",
+					artist = _mainViewModel.DeckA?.TrackArtist ?? string.Empty,
+					album = _mainViewModel.DeckA?.TrackAlbum ?? string.Empty,
+					state = _mainViewModel.DeckA?.PlaybackStateText ?? "Stopped",
+					position = _mainViewModel.DeckA?.Position.TotalSeconds ?? 0,
+					duration = _mainViewModel.DeckA?.Duration.TotalSeconds ?? 0
+				},
+				queue = queueItems
+			}
+		};
+	}
+
+	private async Task BroadcastPlayerUpdateAsync()
+	{
+		if (_sockets.IsEmpty) return;
+
+		try
+		{
+			var stateObj = GetPlayerStateObject();
+			string json = JsonSerializer.Serialize(stateObj);
+			byte[] bytes = Encoding.UTF8.GetBytes(json);
+
+			foreach (var (id, ws) in _sockets)
+			{
+				if (ws.State == WebSocketState.Open)
+				{
+					try
+					{
+						await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+					}
+					catch { }
+				}
+			}
+		}
+		catch { }
+	}
+
+	private async Task BroadcastFullStateAsync()
 	{
 		if (_sockets.IsEmpty) return;
 
@@ -525,7 +607,7 @@ public class WebServerService : IDisposable
 			if (root.TryGetProperty("streamShoutcastStreamId", out var ssid)) _mainViewModel.StreamConfig.ShoutcastStreamId = ssid.GetInt32();
 			if (root.TryGetProperty("autoConnectStreamOnStartup", out var ac)) _mainViewModel.AutoConnectStreamOnStartup = ac.GetBoolean();
 
-			await BroadcastStateAsync();
+			await BroadcastFullStateAsync();
 			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true }));
 			return;
 		}
@@ -548,7 +630,7 @@ public class WebServerService : IDisposable
 					}
 				}
 			}
-			await BroadcastStateAsync();
+			await BroadcastFullStateAsync();
 			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true }));
 			return;
 		}
@@ -567,7 +649,7 @@ public class WebServerService : IDisposable
 					_mainViewModel.Library.WatchedFolders.Remove(folder);
 				}
 			}
-			await BroadcastStateAsync();
+			await BroadcastFullStateAsync();
 			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true }));
 			return;
 		}
