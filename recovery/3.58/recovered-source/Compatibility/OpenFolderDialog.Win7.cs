@@ -1,4 +1,4 @@
-#if NET6_0
+#if NET6_0_WINDOWS
 using System.Windows.Forms;
 
 namespace Microsoft.Win32;
