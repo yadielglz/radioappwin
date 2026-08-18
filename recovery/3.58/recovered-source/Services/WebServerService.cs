@@ -500,20 +500,70 @@ public class WebServerService : IDisposable
 			? path.Substring(4).Trim('/')
 			: (path.Equals("api", StringComparison.OrdinalIgnoreCase) ? string.Empty : path);
 
-		// 1. GET /api/drives -> Enumerate all physical and mapped network drives
+		// 1. GET /api/drives -> Enumerate all physical and mapped network drives (including A:\, Z:\, etc.)
 		if (subPath.Equals("drives", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "GET")
 		{
-			var drives = DriveInfo.GetDrives().Select(d => new
-			{
-				name = d.Name,
-				driveType = d.DriveType.ToString(),
-				isReady = d.IsReady,
-				label = d.IsReady ? d.VolumeLabel : string.Empty,
-				totalSize = d.IsReady ? d.TotalSize : 0,
-				availableFreeSpace = d.IsReady ? d.AvailableFreeSpace : 0
-			}).ToList();
+			var driveList = new List<object>();
+			var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-			string jsonDrives = JsonSerializer.Serialize(new { success = true, drives });
+			try
+			{
+				foreach (var d in DriveInfo.GetDrives())
+				{
+					try
+					{
+						string label = string.Empty;
+						long total = 0, free = 0;
+						if (d.IsReady)
+						{
+							try { label = d.VolumeLabel; } catch { }
+							try { total = d.TotalSize; } catch { }
+							try { free = d.AvailableFreeSpace; } catch { }
+						}
+						driveList.Add(new
+						{
+							name = d.Name,
+							driveType = d.DriveType.ToString(),
+							isReady = true,
+							label = label,
+							totalSize = total,
+							availableFreeSpace = free
+						});
+						seen.Add(d.Name.TrimEnd('\\'));
+					}
+					catch { }
+				}
+			}
+			catch { }
+
+			// Explicit fallback check for all letters A:\ through Z:\ (Network shares, TrueNAS mounts)
+			for (char c = 'A'; c <= 'Z'; c++)
+			{
+				string drivePath = $"{c}:\\";
+				string driveKey = $"{c}:";
+				if (!seen.Contains(driveKey))
+				{
+					try
+					{
+						if (Directory.Exists(drivePath))
+						{
+							driveList.Add(new
+							{
+								name = drivePath,
+								driveType = "NetworkOrShare",
+								isReady = true,
+								label = $"Drive ({c}:)",
+								totalSize = 0L,
+								availableFreeSpace = 0L
+							});
+							seen.Add(driveKey);
+						}
+					}
+					catch { }
+				}
+			}
+
+			string jsonDrives = JsonSerializer.Serialize(new { success = true, drives = driveList });
 			await WriteJsonResponseAsync(context, jsonDrives);
 			return;
 		}
@@ -522,10 +572,18 @@ public class WebServerService : IDisposable
 		if (subPath.Equals("browse", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "GET")
 		{
 			string targetPath = context.Request.QueryString["path"] ?? string.Empty;
+			targetPath = targetPath.Trim().Replace('/', '\\');
+			if (targetPath.Length == 2 && targetPath[1] == ':')
+			{
+				targetPath += "\\";
+			}
 			if (string.IsNullOrWhiteSpace(targetPath))
 			{
-				var firstDrive = DriveInfo.GetDrives().FirstOrDefault(d => d.IsReady);
-				targetPath = firstDrive?.Name ?? @"C:\";
+				targetPath = @"A:\";
+				if (!Directory.Exists(targetPath))
+				{
+					targetPath = @"C:\";
+				}
 			}
 
 			try
@@ -533,7 +591,7 @@ public class WebServerService : IDisposable
 				if (!Directory.Exists(targetPath))
 				{
 					context.Response.StatusCode = 404;
-					await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = false, message = "Directory not found." }));
+					await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = false, message = $"Directory not found: {targetPath}" }));
 					return;
 				}
 
@@ -563,7 +621,7 @@ public class WebServerService : IDisposable
 			}
 			catch (UnauthorizedAccessException)
 			{
-				await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = false, message = "Access Denied by Windows Security." }));
+				await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = false, message = "Access denied." }));
 			}
 			catch (Exception ex)
 			{

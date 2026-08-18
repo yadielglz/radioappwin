@@ -606,10 +606,13 @@
           </ul>
         </div>
 
-        <!-- Selected Path Preview -->
+        <!-- Selected Path Preview & Direct Input -->
         <div class="selected-path-box">
           <span class="path-label">Selected Path:</span>
-          <input type="text" class="form-input font-mono" id="txtSelectedBrowserPath" readonly>
+          <div style="display:flex;gap:6px;width:100%;">
+            <input type="text" class="form-input font-mono" id="txtSelectedBrowserPath" placeholder="Type or select path (e.g. A:\Music)">
+            <button class="btn-action" id="btnGoBrowserPath" style="padding:6px 12px;">Go</button>
+          </div>
         </div>
       </div>
 

@@ -172,6 +172,8 @@ class RadioApiClient {
   deckSkip(deckId) { this.sendCommand('SKIP', { deck: deckId }); }
   deckCue(deckId) { this.sendCommand('CUE', { deck: deckId }); }
   toggleStream() { this.sendCommand('TOGGLE_STREAM'); }
+  startStream() { this.sendCommand('CONNECT_STREAM'); }
+  stopStream() { this.sendCommand('DISCONNECT_STREAM'); }
   clearQueue() { this.sendCommand('CLEAR_QUEUE'); }
   rescanLibrary() { this.sendCommand('RESCAN_LIBRARY'); }
   setVolume(deckId, val) { this.sendCommand('SET_VOLUME', { deck: deckId, volume: val }); }

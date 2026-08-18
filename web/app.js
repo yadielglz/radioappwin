@@ -447,7 +447,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Broadcast Toggle
     els.btnToggleBroadcast.addEventListener('click', () => {
-      window.radioApi.toggleStream();
+      if (state.isBroadcasting) {
+        window.radioApi.stopStream();
+      } else {
+        window.radioApi.startStream();
+      }
     });
 
     // Folder Manager Button in Top Header
@@ -804,14 +808,31 @@ document.addEventListener('DOMContentLoaded', () => {
     els.btnCloseBrowserModal.addEventListener('click', () => els.folderBrowserModal.classList.remove('open'));
     els.btnCancelBrowser.addEventListener('click', () => els.folderBrowserModal.classList.remove('open'));
 
-    // Allow user to manually type path and hit Enter
-    els.txtSelectedBrowserPath.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        state.browserState.currentPath = els.txtSelectedBrowserPath.value.trim();
-        state.browserState.selectedPath = state.browserState.currentPath;
+    // Allow user to manually type path and hit Enter or click Go
+    const handleManualBrowse = () => {
+      const p = els.txtSelectedBrowserPath.value.trim();
+      if (p) {
+        state.browserState.currentPath = p;
+        state.browserState.selectedPath = p;
         renderBrowserDirectory();
       }
+    };
+
+    els.txtSelectedBrowserPath.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleManualBrowse();
+      }
     });
+
+    els.txtSelectedBrowserPath.addEventListener('input', () => {
+      state.browserState.selectedPath = els.txtSelectedBrowserPath.value.trim();
+    });
+
+    const btnGo = document.getElementById('btnGoBrowserPath');
+    if (btnGo) {
+      btnGo.addEventListener('click', handleManualBrowse);
+    }
 
     // Confirm button
     els.btnConfirmSelectFolder.addEventListener('click', async () => {
