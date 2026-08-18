@@ -1453,6 +1453,14 @@ public class MainViewModel : ViewModelBase, IDisposable
 		}
 		else
 		{
+			if (!_streamConnectionDesired)
+			{
+				StreamStatus = "Disconnected";
+				_streamConnectedAtUtc = null;
+				_streamStallRecoveryStarted = false;
+				CancelStreamReconnect();
+				return;
+			}
 			StreamStatus = "Disconnected — stream error: " + message;
 			_streamConnectedAtUtc = null;
 			_streamStallRecoveryStarted = false;
@@ -1462,6 +1470,10 @@ public class MainViewModel : ViewModelBase, IDisposable
 
 	private void CheckStreamHealth()
 	{
+		if (!_streamConnectionDesired || !_streamingService.IsConnected)
+		{
+			return;
+		}
 		DateTimeOffset now = DateTimeOffset.UtcNow;
 		DateTimeOffset? lastWrite = _streamingService.LastSuccessfulWriteUtc;
 		if (_streamReconnectAttempt > 0 && _streamConnectedAtUtc.HasValue && lastWrite.HasValue && now - _streamConnectedAtUtc.Value >= TimeSpan.FromSeconds(30.0) && now - lastWrite.Value < TimeSpan.FromSeconds(5.0))
