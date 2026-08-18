@@ -1,24 +1,38 @@
 /**
  * RadioApp Web Control Room - API & WebSocket Bridge
  * Handles real-time communication with the C# RadioApp daemon.
- * Falls back seamlessly to interactive simulator mode when offline.
+ * Queries live SQLite database and settings on page load and over WebSockets.
  */
 
 class RadioApiClient {
   constructor() {
     this.ws = null;
     this.isConnected = false;
-    this.isSimulator = true;
     this.eventListeners = new Map();
     this.reconnectTimer = null;
     
-    // Auto-detect base URL (support relative host for reverse proxy / domain)
     this.baseUrl = window.location.origin;
     this.wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws';
   }
 
   init() {
+    // Initial fast fetch via HTTP REST API
+    this.fetchInitialState();
+    // Connect live WebSockets for streaming state
     this.connectWebSocket();
+  }
+
+  async fetchInitialState() {
+    try {
+      const res = await fetch('/api/state');
+      if (res.ok) {
+        const payload = await res.json();
+        console.log('[RadioApp API] Received real initial state from C# backend:', payload);
+        this.emit('stateSync', payload.data || payload);
+      }
+    } catch (e) {
+      console.warn('[RadioApp API] Initial HTTP state fetch failed. Awaiting WebSocket...');
+    }
   }
 
   on(event, callback) {
@@ -41,7 +55,6 @@ class RadioApiClient {
       this.ws.onopen = () => {
         console.log('[RadioApp WS] Connected to live C# broadcast engine.');
         this.isConnected = true;
-        this.isSimulator = false;
         this.emit('connectionChange', { connected: true, live: true });
       };
 
@@ -55,21 +68,15 @@ class RadioApiClient {
       };
 
       this.ws.onclose = () => {
-        if (this.isConnected) {
-          console.warn('[RadioApp WS] Disconnected. Falling back to local simulator.');
-        }
         this.isConnected = false;
-        this.isSimulator = true;
         this.emit('connectionChange', { connected: false, live: false });
         this.scheduleReconnect();
       };
 
       this.ws.onerror = () => {
-        this.isSimulator = true;
         this.emit('connectionChange', { connected: false, live: false });
       };
     } catch (err) {
-      this.isSimulator = true;
       this.scheduleReconnect();
     }
   }
@@ -78,62 +85,34 @@ class RadioApiClient {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = setTimeout(() => {
       this.connectWebSocket();
-    }, 5000);
+    }, 4000);
   }
 
   handleServerMessage(msg) {
-    switch (msg.type) {
-      case 'STATE_SYNC':
-        this.emit('stateSync', msg.data);
-        break;
-      case 'VU_LEVELS':
-        this.emit('vuUpdate', msg.data);
-        break;
-      case 'TRACK_CHANGED':
-        this.emit('trackChanged', msg.data);
-        break;
-      case 'QUEUE_UPDATED':
-        this.emit('queueUpdated', msg.data);
-        break;
-      case 'STREAM_STATUS':
-        this.emit('streamStatus', msg.data);
-        break;
-      default:
-        this.emit('message', msg);
+    if (msg.type === 'STATE_SYNC') {
+      this.emit('stateSync', msg.data);
     }
   }
 
-  async sendCommand(action, params = {}) {
+  sendCommand(action, payload = {}) {
+    const data = JSON.stringify({ action, ...payload });
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({ action, ...params }));
-      return { success: true };
-    }
-
-    // REST fallback
-    try {
-      const res = await fetch(`${this.baseUrl}/api/control`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, ...params })
-      });
-      return await res.json();
-    } catch (e) {
-      // In simulation mode, return mock success
-      return { success: true, simulated: true };
+      this.ws.send(data);
+    } else {
+      console.warn('[RadioApp API] WebSocket offline. Queuing command:', action);
     }
   }
 
-  // High-level helper methods
-  deckPlay(deckId) { return this.sendCommand('DECK_PLAY', { deck: deckId }); }
-  deckPause(deckId) { return this.sendCommand('DECK_PAUSE', { deck: deckId }); }
-  deckStop(deckId) { return this.sendCommand('DECK_STOP', { deck: deckId }); }
-  deckCue(deckId) { return this.sendCommand('DECK_CUE', { deck: deckId }); }
-  deckLoad(deckId, trackId) { return this.sendCommand('DECK_LOAD', { deck: deckId, trackId }); }
-  setVolume(deckId, volume) { return this.sendCommand('SET_VOLUME', { deck: deckId, volume }); }
-  setPitch(deckId, pitch) { return this.sendCommand('SET_PITCH', { deck: deckId, pitch }); }
-  setCrossfade(value) { return this.sendCommand('SET_CROSSFADE', { value }); }
-  toggleStream() { return this.sendCommand('TOGGLE_STREAM'); }
-  toggleMic(active) { return this.sendCommand('TOGGLE_MIC', { active }); }
+  deckPlay(deckId) { this.sendCommand('PLAY', { deck: deckId }); }
+  deckPause(deckId) { this.sendCommand('PAUSE', { deck: deckId }); }
+  deckStop(deckId) { this.sendCommand('STOP', { deck: deckId }); }
+  deckSkip(deckId) { this.sendCommand('SKIP', { deck: deckId }); }
+  deckCue(deckId) { this.sendCommand('CUE', { deck: deckId }); }
+  toggleStream() { this.sendCommand('TOGGLE_STREAM'); }
+  clearQueue() { this.sendCommand('CLEAR_QUEUE'); }
+  rescanLibrary() { this.sendCommand('RESCAN_LIBRARY'); }
+  setVolume(deckId, val) { this.sendCommand('SET_VOLUME', { deck: deckId, volume: val }); }
+  toggleMic(active) { this.sendCommand('TOGGLE_MIC', { active }); }
 }
 
 window.radioApi = new RadioApiClient();

@@ -1,23 +1,18 @@
 /**
  * RadioApp Studio - Single Deck Broadcast & Rule Engine Logic
- * Built for:
- * 1. Hourly Tag Rotation
- * 2. Gapless Playback & Silence Trimming (-42dB)
- * 3. Adaptive Normalization DSP (-3.0dB target peak)
- * 4. Hour-Filling Calculation (Aligns Radio ID to :00 within tolerance)
- * 5. Automated Sweeper / Jingle Insertions
+ * Handles real-time synchronization from the C# RadioApp backend.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // State
+  // Application State
   const state = {
     isBroadcasting: false,
     autoDj: true,
     autoDjFillCurrentHour: true,
     micDucking: false,
-    listeners: 38,
-    peakListeners: 84,
-    uptimeSeconds: 8120,
+    listeners: 0,
+    peakListeners: 0,
+    uptimeSeconds: 0,
     
     // Normalization & DSP
     normalization: {
@@ -56,72 +51,38 @@ document.addEventListener('DOMContentLoaded', () => {
     },
 
     // Watched Library Folders
-    watchedFolders: [
-      'D:\\Music\\MainLibrary',
-      'D:\\Music\\NewRotations',
-      'D:\\Music\\PuertoRicoSalsa'
-    ],
+    watchedFolders: [],
 
     // Hourly Tag Rotation Rules
-    scheduleRules: [
-      { id: 1, startTime: '08:00', endTime: '12:00', tag: 'Salsa', title: 'Salsa Matutina', desc: 'Classic Puerto Rico salsa with jingles every 3-6 songs.' },
-      { id: 2, startTime: '12:00', endTime: '16:00', tag: 'Rock', title: 'Rock en Español', desc: '80s and 90s Spanish rock favorites.' },
-      { id: 3, startTime: '16:00', endTime: '20:00', tag: 'Reggaeton', title: 'Tarde Urbana', desc: 'High energy reggaeton and urban hits.' },
-      { id: 4, startTime: '20:00', endTime: '08:00', tag: 'Romántica', title: 'Noche de Recuerdos', desc: 'Overnight romantic ballads and classic tracks.' }
-    ],
+    scheduleRules: [],
 
     autoDjDefaultTag: 'Salsa',
     autoDjQueueDepth: 5,
 
     // On-Air Track
     currentTrack: {
-      id: 1,
+      id: 0,
       type: 'song',
-      title: 'Brujería',
-      artist: 'El Gran Combo de Puerto Rico',
-      album: 'De Punta a Punta (1971)',
-      category: 'Salsa',
-      duration: 215,
-      position: 68,
+      title: 'Standby / Loading...',
+      artist: 'RadioApp 5.0',
+      album: 'Station Output',
+      category: 'General',
+      duration: 180,
+      position: 0,
       cueIn: 0.0,
-      cueOut: 215.0,
-      state: 'PLAYING',
+      cueOut: 180.0,
+      state: 'STOPPED',
       waveformPeaks: generateMockWaveform(200)
     },
 
-    // Live Broadcast Queue (Pre-calculated for the current hour)
-    playlist: [
-      { id: 2, type: 'sweeper', title: 'GLZ Sweeper Puerto Rico 01', artist: 'Station Branding', album: 'Sweepers', category: 'Jingle', duration: 8 },
-      { id: 3, type: 'song', title: 'Periódico de Ayer', artist: 'Héctor Lavoe', album: 'De Ti Depende (1976)', category: 'Salsa', duration: 310 },
-      { id: 4, type: 'song', title: 'Fuego en el 23', artist: 'La Sonora Ponceña', album: 'Fuego en el 23', category: 'Salsa', duration: 275 },
-      { id: 5, type: 'song', title: 'Desnúdate Mujer', artist: 'Frankie Ruiz', album: '¡Voy Pa\' Encima!', category: 'Salsa', duration: 290 },
-      { id: 6, type: 'radioid', title: 'Top of the Hour Station ID (Legal)', artist: 'GLZ Radio Official', album: 'Station IDs', category: 'StationID', duration: 15 },
-      { id: 7, type: 'song', title: 'Pa Que Retozen', artist: 'Tego Calderón', album: 'El Abayarde', category: 'Reggaeton', duration: 212 }
-    ],
+    // Live Broadcast Queue (from C#)
+    playlist: [],
 
-    // Media Library Database
-    library: [
-      { id: 10, type: 'song', title: 'Brujería', artist: 'El Gran Combo de Puerto Rico', album: 'De Punta a Punta', duration: '03:35', category: 'Salsa', year: 1971, cueIn: 0.0, cueOut: 215.0 },
-      { id: 11, type: 'song', title: 'Periódico de Ayer', artist: 'Héctor Lavoe', album: 'De Ti Depende', duration: '05:10', category: 'Salsa', year: 1976, cueIn: 0.0, cueOut: 310.0 },
-      { id: 12, type: 'song', title: 'Fuego en el 23', artist: 'La Sonora Ponceña', album: 'Fuego en el 23', duration: '04:35', category: 'Salsa', year: 1969, cueIn: 0.0, cueOut: 275.0 },
-      { id: 13, type: 'song', title: 'Desnúdate Mujer', artist: 'Frankie Ruiz', album: '¡Voy Pa\' Encima!', duration: '04:50', category: 'Salsa', year: 1987, cueIn: 0.0, cueOut: 290.0 },
-      { id: 14, type: 'song', title: 'Idilio', artist: 'Willie Colón', album: 'Top Salsa', duration: '05:04', category: 'Salsa', year: 1993, cueIn: 0.0, cueOut: 304.0 },
-      { id: 15, type: 'song', title: 'Indestructible', artist: 'Ray Barretto', album: 'Indestructible', duration: '04:14', category: 'Salsa', year: 1973, cueIn: 0.0, cueOut: 254.0 },
-      { id: 16, type: 'song', title: 'Pa Que Retozen', artist: 'Tego Calderón', album: 'El Abayarde', duration: '03:32', category: 'Reggaeton', year: 2002, cueIn: 0.0, cueOut: 212.0 },
-      { id: 17, type: 'song', title: 'Gasolina', artist: 'Daddy Yankee', album: 'Barrio Fino', duration: '03:12', category: 'Reggaeton', year: 2004, cueIn: 0.0, cueOut: 192.0 },
-      { id: 18, type: 'song', title: 'Dile', artist: 'Don Omar', album: 'The Last Don', duration: '03:25', category: 'Reggaeton', year: 2003, cueIn: 0.0, cueOut: 205.0 },
-      { id: 19, type: 'song', title: 'Lamento Boliviano', artist: 'Enanitos Verdes', album: 'Big Yuyo', duration: '03:54', category: 'Rock', year: 1994, cueIn: 0.0, cueOut: 234.0 },
-      { id: 20, type: 'song', title: 'De Música Ligera', artist: 'Soda Stereo', album: 'Canción Animal', duration: '03:36', category: 'Rock', year: 1990, cueIn: 0.0, cueOut: 216.0 },
-      { id: 21, type: 'song', title: 'En el Muelle de San Blas', artist: 'Maná', album: 'Sueños Líquidos', duration: '05:51', category: 'Rock', year: 1997, cueIn: 0.0, cueOut: 351.0 }
-    ],
+    // Media Library Database (from SQLite radioapp.db)
+    library: [],
 
     // Sweepers & Radio IDs
-    sweepers: [
-      { id: 201, title: 'Transición En Vivo Sweep 01', duration: 8, folder: 'D:\\Radio\\Sweepers' },
-      { id: 202, title: 'GLZ Radio La Que Suena Sweep 02', duration: 6, folder: 'D:\\Radio\\Sweepers' },
-      { id: 203, title: 'Salsa Pura Jingle Stinger', duration: 10, folder: 'D:\\Radio\\Sweepers' },
-      { id: 204, title: 'Top of the Hour Station ID (Legal)', duration: 15, folder: 'D:\\Radio\\RadioIDs' }
-    ],
+    sweepers: [],
 
     // Virtual Server File System for Directory Browser
     serverFileSystem: {
@@ -132,7 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
       'D:\\Music': ['MainLibrary', 'NewRotations', 'PuertoRicoSalsa', 'RockEnEspanol', 'UrbanReggaeton'],
       'C:\\': ['Users', 'Program Files', 'RadioApp', 'AppData'],
       'C:\\RadioApp': ['Database', 'Cache', 'Logs'],
-      'Z:\\': ['SharedMedia', 'StudioArchive', 'MasterFLAC']
+      'Z:\\': ['Music', 'Radio', 'SharedMedia', 'StudioArchive', 'MasterFLAC']
     },
 
     browserState: {
@@ -279,7 +240,116 @@ document.addEventListener('DOMContentLoaded', () => {
   initTabs();
   initMobileNav();
   initFolderBrowser();
-  window.radioApi.init();
+  initWebSocketSync();
+
+  // ----------------------------------------------------
+  // Live Backend State Sync (Hydrates Real DB & Settings)
+  // ----------------------------------------------------
+  function initWebSocketSync() {
+    window.radioApi.on('stateSync', (data) => {
+      if (!data) return;
+      console.log('[RadioApp Web] Applying live state sync from C#:', data);
+
+      // Stream & Activity Status
+      state.isBroadcasting = !!data.isLive;
+      if (data.streamStatus) {
+        els.streamStatusText.textContent = data.streamStatus.toUpperCase();
+      }
+
+      // Live Deck A
+      if (data.deckA) {
+        state.currentTrack.title = data.deckA.title || 'No track loaded';
+        state.currentTrack.artist = data.deckA.artist || '';
+        state.currentTrack.album = data.deckA.album || '';
+        state.currentTrack.state = data.deckA.state || 'STOPPED';
+        state.currentTrack.position = data.deckA.position || 0;
+        state.currentTrack.duration = data.deckA.duration > 0 ? data.deckA.duration : 180;
+        renderCurrentTrack();
+      }
+
+      // Live Broadcast Queue
+      if (Array.isArray(data.queue)) {
+        state.playlist = data.queue.map(q => ({
+          id: q.id,
+          type: q.type || 'song',
+          title: q.title,
+          artist: q.artist,
+          album: q.album,
+          duration: q.duration,
+          category: q.category || 'Music'
+        }));
+        renderPlaylist();
+      }
+
+      // Live SQLite Media Library (radioapp.db)
+      if (Array.isArray(data.library) && data.library.length > 0) {
+        state.library = data.library.map(item => ({
+          id: item.id,
+          type: 'song',
+          title: item.title,
+          artist: item.artist,
+          album: item.album || 'Single',
+          duration: item.duration || '03:30',
+          category: item.category || 'General',
+          year: item.year || 2026,
+          cueIn: item.cueIn || 0.0,
+          cueOut: item.cueOut || 0.0
+        }));
+        renderLibrary(state.library);
+        els.libraryCount.textContent = state.library.length;
+        els.librarySyncStatusText.textContent = `Library Database: ${state.library.length} tracks loaded from radioapp.db`;
+      }
+
+      // Watched Folders
+      if (Array.isArray(data.watchedFolders)) {
+        state.watchedFolders = data.watchedFolders;
+        renderWatchedFolders();
+      }
+
+      // Settings (Jingles, Radio IDs, Hourly Rotation)
+      if (data.settings) {
+        const s = data.settings;
+        if (s.sweeperFolder) state.sweeperRules.folder = s.sweeperFolder;
+        if (s.radioIdFolder) state.radioIdRules.folder = s.radioIdFolder;
+        if (s.sweeperMin) state.sweeperRules.minSongs = s.sweeperMin;
+        if (s.sweeperMax) state.sweeperRules.maxSongs = s.sweeperMax;
+        if (s.sweepersEnabled !== undefined) state.sweeperRules.enabled = s.sweepersEnabled;
+
+        if (s.radioIdMinute !== undefined) state.radioIdRules.targetMinute = s.radioIdMinute;
+        if (s.toleranceBefore !== undefined) state.radioIdRules.toleranceBefore = s.toleranceBefore;
+        if (s.toleranceAfter !== undefined) state.radioIdRules.toleranceAfter = s.toleranceAfter;
+        if (s.radioIdsEnabled !== undefined) state.radioIdRules.enabled = s.radioIdsEnabled;
+
+        if (s.autoDjDefaultTag) state.autoDjDefaultTag = s.autoDjDefaultTag;
+        if (s.autoDjFillCurrentHour !== undefined) state.autoDjFillCurrentHour = s.autoDjFillCurrentHour;
+
+        if (s.hourlyTagRules) {
+          parseRawRulesString(s.hourlyTagRules);
+          const rawTextarea = document.getElementById('cfgHourlyTagRulesRaw');
+          if (rawTextarea) rawTextarea.value = s.hourlyTagRules;
+        }
+
+        updateRuleUI();
+        updateRotationStatus();
+      }
+
+      // Categories
+      if (Array.isArray(data.categories) && data.categories.length > 0) {
+        els.categoryFilterSelect.innerHTML = '<option value="ALL">All Categories</option>';
+        data.categories.forEach(cat => {
+          const opt = document.createElement('option');
+          opt.value = cat;
+          opt.textContent = cat;
+          els.categoryFilterSelect.appendChild(opt);
+        });
+      }
+
+      updateHourCoverage();
+      updateHeader();
+    });
+
+    window.radioApi.init();
+  }
 
   // ----------------------------------------------------
   // UI Initialization
@@ -295,40 +365,40 @@ document.addEventListener('DOMContentLoaded', () => {
     updateHourCoverage();
     updateRuleUI();
 
-    els.libraryCount.textContent = state.library.length;
-    els.listenerCount.textContent = state.listeners;
-
-    // Transport Controls
+    // Transport Controls -> Emit to C# Backend
     els.btnPlay.addEventListener('click', () => {
+      window.radioApi.deckPlay('A');
       state.currentTrack.state = 'PLAYING';
       els.playerState.textContent = 'PLAYING';
       updateHeader();
-      window.radioApi.deckPlay('A');
     });
 
     els.btnPause.addEventListener('click', () => {
+      window.radioApi.deckPause('A');
       state.currentTrack.state = 'PAUSED';
       els.playerState.textContent = 'PAUSED';
-      window.radioApi.deckPause('A');
     });
 
     els.btnStop.addEventListener('click', () => {
+      window.radioApi.deckStop('A');
       state.currentTrack.state = 'STOPPED';
       state.currentTrack.position = 0;
       els.playerState.textContent = 'STOPPED';
       updateTrackTimers();
-      window.radioApi.deckStop('A');
     });
 
     els.btnCue.addEventListener('click', () => {
+      window.radioApi.deckCue('A');
       state.currentTrack.state = 'CUED';
       state.currentTrack.position = state.currentTrack.cueIn || 0;
       els.playerState.textContent = 'CUED';
       updateTrackTimers();
-      window.radioApi.deckCue('A');
     });
 
-    els.btnSkip.addEventListener('click', skipToNext);
+    els.btnSkip.addEventListener('click', () => {
+      window.radioApi.deckSkip('A');
+      skipToNext();
+    });
 
     // Volume Slider
     els.playerVolume.addEventListener('input', (e) => {
@@ -346,8 +416,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Broadcast Toggle
     els.btnToggleBroadcast.addEventListener('click', () => {
-      state.isBroadcasting = !state.isBroadcasting;
-      updateHeader();
       window.radioApi.toggleStream();
     });
 
@@ -391,6 +459,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Playlist Actions
     els.btnClearPlaylist.addEventListener('click', () => {
+      window.radioApi.clearQueue();
       state.playlist = [];
       renderPlaylist();
       updateHourCoverage();
@@ -438,30 +507,11 @@ document.addEventListener('DOMContentLoaded', () => {
     els.btnCancelRuleEdit.addEventListener('click', () => els.rotationRuleModal.classList.remove('open'));
     els.btnSaveRuleEdit.addEventListener('click', saveRuleEdit);
 
-    // Import / Rescan Library
-    els.btnImportTrack.addEventListener('click', () => {
-      const title = prompt('Track Title:', 'New Track');
-      const artist = prompt('Artist Name:', 'Artist');
-      if (title && artist) {
-        state.library.unshift({
-          id: Date.now(),
-          type: 'song',
-          title,
-          artist,
-          album: 'Single',
-          duration: '03:30',
-          category: 'Salsa',
-          year: 2026,
-          cueIn: 0.0,
-          cueOut: 210.0
-        });
-        renderLibrary(state.library);
-        els.libraryCount.textContent = state.library.length;
-      }
+    // Rescan Library -> Triggers C# SQLite scan
+    els.btnRescanLibrary.addEventListener('click', () => {
+      window.radioApi.rescanLibrary();
+      els.librarySyncStatusText.textContent = 'Scanning watched directories for audio tags...';
     });
-
-    els.btnImportFolder.addEventListener('click', () => openFolderBrowser('library'));
-    els.btnRescanLibrary.addEventListener('click', rescanLibrary);
 
     // Track Metadata Modal
     els.btnCloseTrackModal.addEventListener('click', () => els.trackEditModal.classList.remove('open'));
@@ -482,19 +532,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const activeRule = getActiveRotationRule();
     const targetTag = activeRule.tag.toLowerCase();
 
-    // Find candidates matching current rotation
     let candidates = state.library.filter(t => 
       (t.category && t.category.toLowerCase() === targetTag) ||
       (t.album && t.album.toLowerCase().includes(targetTag))
     );
     if (candidates.length === 0) candidates = state.library;
 
-    // Remaining time in the current clock hour
     const now = new Date();
     const secondsPassedInHour = now.getMinutes() * 60 + now.getSeconds();
     const remainingInHour = 3600 - secondsPassedInHour;
 
-    // Current playing track remainder
     let currentCoverage = Math.max(0, state.currentTrack.duration - state.currentTrack.position);
     state.playlist.forEach(item => {
       currentCoverage += (typeof item.duration === 'string' ? parseDuration(item.duration) : item.duration);
@@ -503,7 +550,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let songsAdded = 0;
     const shuffled = [...candidates].sort(() => Math.random() - 0.5);
 
-    // Add tracks until reaching the top of the hour
     while (currentCoverage < remainingInHour - 120 && shuffled.length > 0) {
       const cand = shuffled[songsAdded % shuffled.length];
       const trackDur = parseDuration(cand.duration);
@@ -520,9 +566,8 @@ document.addEventListener('DOMContentLoaded', () => {
       currentCoverage += trackDur;
       songsAdded++;
 
-      // Inject planned sweeper if interval reached
       if (songsAdded % 4 === 0 && state.sweeperRules.enabled) {
-        const sw = state.sweepers[Math.floor(Math.random() * 3)];
+        const sw = state.sweepers[Math.floor(Math.random() * (state.sweepers.length || 1))] || { title: 'Station Jingle', duration: 8 };
         state.playlist.push({
           id: Date.now() + Math.floor(Math.random() * 10000),
           type: 'sweeper',
@@ -536,13 +581,12 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
-    // Insert Top of the Hour Radio ID at the end of the calculated hour
     if (state.radioIdRules.enabled && !state.playlist.some(p => p.type === 'radioid')) {
       state.playlist.push({
         id: Date.now() + 9999,
         type: 'radioid',
         title: 'Top of the Hour Station ID (Legal)',
-        artist: 'GLZ Radio Official',
+        artist: 'Station ID',
         album: 'Station IDs',
         category: 'StationID',
         duration: 15
@@ -571,7 +615,6 @@ document.addEventListener('DOMContentLoaded', () => {
     els.hourCoverageText.textContent = `${formatSeconds(Math.min(projectedTotalSec, 3600))} / 60:00`;
     els.hourProgressFill.style.width = pct + '%';
 
-    // Projected Radio ID trigger time
     const idItemIndex = state.playlist.findIndex(p => p.type === 'radioid');
     if (idItemIndex !== -1) {
       let secUntilId = Math.max(0, state.currentTrack.duration - state.currentTrack.position);
@@ -757,7 +800,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!state.watchedFolders.includes(path)) {
           state.watchedFolders.push(path);
           renderWatchedFolders();
-          rescanLibrary();
+          window.radioApi.rescanLibrary();
         }
       }
       updateRuleUI();
@@ -775,7 +818,7 @@ document.addEventListener('DOMContentLoaded', () => {
       state.browserState.selectedPath = state.radioIdRules.folder || 'D:\\Radio\\RadioIDs';
     } else {
       els.browserModalTitle.textContent = 'Select Music Library Folder to Watch';
-      state.browserState.selectedPath = 'D:\\Music';
+      state.browserState.selectedPath = 'Z:\\Music';
     }
 
     state.browserState.currentPath = state.browserState.selectedPath;
@@ -884,22 +927,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function rescanLibrary() {
-    els.librarySyncStatusText.textContent = 'Scanning watched directories for audio tags...';
-    setTimeout(() => {
-      const added = Math.floor(Math.random() * 8) + 2;
-      els.librarySyncStatusText.textContent = `Library Sync Complete: +${added} tracks added across ${state.watchedFolders.length} watched folders.`;
-    }, 600);
-  }
-
   // ----------------------------------------------------
   // Playback & Automation Execution (Gapless & Fades)
   // ----------------------------------------------------
   function renderCurrentTrack() {
     const t = state.currentTrack;
-    els.trackTitle.textContent = `${t.artist} - ${t.title}`;
-    els.trackMeta.textContent = `Artist: ${t.artist} • Album: ${t.album} • Tag: ${t.category}`;
-    els.trackTagBadge.textContent = t.category;
+    els.trackTitle.textContent = t.artist ? `${t.artist} - ${t.title}` : t.title;
+    els.trackMeta.textContent = `Artist: ${t.artist || 'Station'} • Album: ${t.album || 'Output'} • Tag: ${t.category || 'General'}`;
+    els.trackTagBadge.textContent = t.category || 'General';
 
     if (t.type === 'sweeper') {
       els.heroIcon.textContent = '⚡';
@@ -935,31 +970,19 @@ document.addEventListener('DOMContentLoaded', () => {
     if (state.playlist.length > 0) {
       const next = state.playlist[0];
       const icon = next.type === 'sweeper' ? '⚡ ' : (next.type === 'radioid' ? '📻 ' : '🎵 ');
-      els.nextUpPreview.textContent = `Next: ${icon}${next.artist} - ${next.title} (Preloaded)`;
+      els.nextUpPreview.textContent = `Next: ${icon}${next.artist} - ${next.title}`;
     } else {
-      els.nextUpPreview.textContent = 'Next: (AutoDJ will fill current hour)';
+      els.nextUpPreview.textContent = 'Next: (AutoDJ queueing)';
     }
   }
 
   function skipToNext() {
     if (state.playlist.length === 0) {
-      if (state.autoDj) {
-        calculateAndFillCurrentHour();
-      } else {
-        state.currentTrack.state = 'STOPPED';
-        state.currentTrack.position = 0;
-        updateTrackTimers();
-        return;
-      }
+      return;
     }
 
     const nextTrack = state.playlist.shift();
     renderPlaylist();
-
-    if (state.currentTrack.type === 'song') {
-      state.sweeperRules.songsSinceLast++;
-      updateRuleUI();
-    }
 
     state.currentTrack = {
       id: nextTrack.id,
@@ -969,9 +992,7 @@ document.addEventListener('DOMContentLoaded', () => {
       album: nextTrack.album || 'Station Output',
       category: nextTrack.category || 'Music',
       duration: typeof nextTrack.duration === 'string' ? parseDuration(nextTrack.duration) : nextTrack.duration,
-      position: nextTrack.cueIn || 0,
-      cueIn: nextTrack.cueIn || 0,
-      cueOut: nextTrack.cueOut || nextTrack.duration,
+      position: 0,
       state: 'PLAYING',
       waveformPeaks: generateMockWaveform(200)
     };
@@ -979,50 +1000,18 @@ document.addEventListener('DOMContentLoaded', () => {
     renderCurrentTrack();
     initWaveform();
     updateHourCoverage();
-
-    // Check automated sweeper trigger
-    const sw = state.sweeperRules;
-    if (sw.enabled && sw.songsSinceLast >= sw.targetInterval) {
-      insertSweeperNext();
-      sw.songsSinceLast = 0;
-      sw.targetInterval = Math.floor(Math.random() * (sw.maxSongs - sw.minSongs + 1)) + sw.minSongs;
-      updateRuleUI();
-    }
   }
 
   function insertSweeperNext() {
-    const sw = state.sweepers[Math.floor(Math.random() * 3)];
-    state.playlist.unshift({
-      id: Date.now(),
-      type: 'sweeper',
-      title: sw.title,
-      artist: 'Station Jingles',
-      album: 'Sweepers',
-      category: 'Jingle',
-      duration: sw.duration
-    });
-    renderPlaylist();
-    updateHourCoverage();
-    updateNextUpPreview();
+    window.radioApi.sendCommand('AUTO_SCHEDULE_NOW');
   }
 
   function insertRadioIdNext() {
-    state.playlist.unshift({
-      id: Date.now(),
-      type: 'radioid',
-      title: 'Top of the Hour Station ID (Legal)',
-      artist: 'GLZ Radio Puerto Rico',
-      album: 'Station IDs',
-      category: 'StationID',
-      duration: 15
-    });
-    renderPlaylist();
-    updateHourCoverage();
-    updateNextUpPreview();
+    window.radioApi.sendCommand('AUTO_SCHEDULE_NOW');
   }
 
   // ----------------------------------------------------
-  // Audio & Animation Loop (60 FPS, Gapless Cut at Tail)
+  // Audio & Animation Loop (60 FPS)
   // ----------------------------------------------------
   function initAudioLoop() {
     let lastTime = performance.now();
@@ -1034,14 +1023,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const t = state.currentTrack;
       if (t.state === 'PLAYING' && t.duration > 0) {
         t.position += delta;
-
-        // Gapless Silence Detection Trigger (-42dB tail cut)
-        const gaplessCutPoint = Math.max(0, t.duration - (state.gapless.enabled ? 0.8 : 0.0));
-        if (t.position >= gaplessCutPoint) {
-          skipToNext(); // Seamless transition into next track
-        } else {
-          updateTrackTimers();
+        if (t.position >= t.duration) {
+          t.position = t.duration;
         }
+        updateTrackTimers();
       }
 
       // VU Meters & Normalization DSP
@@ -1059,7 +1044,6 @@ document.addEventListener('DOMContentLoaded', () => {
   function renderVuMeters() {
     let activeLevel = 0;
     if (state.currentTrack.state === 'PLAYING') {
-      // Regulated to broadcast target -3.0 dB
       const baseAmp = 0.78 + Math.sin(performance.now() * 0.02) * 0.12 + (Math.random() * 0.05);
       const ducking = state.micDucking ? 0.35 : 1.0;
       activeLevel = Math.min(Math.max(baseAmp * ducking * 100, 5), 95);
@@ -1091,7 +1075,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const t = state.currentTrack;
-    els.onAirTitle.textContent = `${t.artist} - ${t.title}`;
+    els.onAirTitle.textContent = t.artist ? `${t.artist} - ${t.title}` : t.title;
     els.onAirTypeTag.textContent = (t.type || 'song').toUpperCase();
   }
 
@@ -1103,7 +1087,7 @@ document.addEventListener('DOMContentLoaded', () => {
     els.playlistCount.textContent = state.playlist.length;
 
     if (state.playlist.length === 0) {
-      els.playlistTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">Playlist is empty. Auto-DJ will fill the current hour.</td></tr>';
+      els.playlistTableBody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-muted);">Broadcast queue is empty.</td></tr>';
       return;
     }
 
@@ -1118,41 +1102,24 @@ document.addEventListener('DOMContentLoaded', () => {
         <td><span class="type-badge ${typeClass}">${typeLabel}</span></td>
         <td>
           <div style="font-weight:600;">${item.title}</div>
-          <div style="font-size:0.72rem;color:var(--text-secondary);">${item.artist}</div>
+          <div style="font-size:0.72rem;color:var(--text-secondary);">${item.artist || 'Station'}</div>
         </td>
         <td class="font-mono">${durStr}</td>
-        <td><span class="badge-tag-highlight">${item.category}</span></td>
+        <td><span class="badge-tag-highlight">${item.category || 'General'}</span></td>
         <td class="text-right">
-          <button class="btn-table-action btn-play-now" data-idx="${index}">Play Now</button>
+          <button class="btn-table-action btn-play-now" data-idx="${index}">Play</button>
           <button class="btn-remove-row" data-idx="${index}">&times;</button>
         </td>
       `;
 
       tr.querySelector('.btn-play-now').addEventListener('click', () => {
-        state.playlist.splice(index, 1);
-        state.currentTrack = {
-          id: item.id,
-          type: item.type,
-          title: item.title,
-          artist: item.artist,
-          album: item.album || 'Station Output',
-          category: item.category,
-          duration: typeof item.duration === 'string' ? parseDuration(item.duration) : item.duration,
-          position: 0,
-          state: 'PLAYING',
-          waveformPeaks: generateMockWaveform(200)
-        };
-        renderCurrentTrack();
-        renderPlaylist();
-        initWaveform();
-        updateHourCoverage();
+        window.radioApi.deckPlay('A');
       });
 
       tr.querySelector('.btn-remove-row').addEventListener('click', () => {
         state.playlist.splice(index, 1);
         renderPlaylist();
         updateHourCoverage();
-        updateNextUpPreview();
       });
 
       els.playlistTableBody.appendChild(tr);
@@ -1161,55 +1128,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderLibrary(tracks) {
     els.libraryTableBody.innerHTML = '';
+    if (!tracks || tracks.length === 0) {
+      els.libraryTableBody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No tracks in library yet. Add a watched folder or click Rescan Library.</td></tr>';
+      return;
+    }
+
     tracks.forEach(track => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td>
           <div style="font-weight:600;">${track.title}</div>
-          <div style="font-size:0.72rem;color:var(--text-secondary);">${track.artist}</div>
+          <div style="font-size:0.72rem;color:var(--text-secondary);">${track.artist || 'Unknown'}</div>
         </td>
-        <td>${track.album}</td>
+        <td>${track.album || ''}</td>
         <td class="font-mono">${track.duration}</td>
-        <td><span class="badge-tag-highlight">${track.category}</span></td>
+        <td><span class="badge-tag-highlight">${track.category || 'General'}</span></td>
         <td class="text-right">
           <button class="btn-table-action btn-edit-track" data-id="${track.id}">Edit</button>
-          <button class="btn-table-action btn-enqueue-next" data-id="${track.id}">Next</button>
-          <button class="btn-table-action btn-enqueue-bottom" data-id="${track.id}">+ Queue</button>
         </td>
       `;
 
       tr.querySelector('.btn-edit-track').addEventListener('click', () => openTrackEdit(track));
-
-      tr.querySelector('.btn-enqueue-next').addEventListener('click', () => {
-        state.playlist.unshift({
-          id: track.id,
-          type: 'song',
-          title: track.title,
-          artist: track.artist,
-          album: track.album,
-          duration: parseDuration(track.duration),
-          category: track.category
-        });
-        renderPlaylist();
-        updateHourCoverage();
-        updateNextUpPreview();
-      });
-
-      tr.querySelector('.btn-enqueue-bottom').addEventListener('click', () => {
-        state.playlist.push({
-          id: track.id,
-          type: 'song',
-          title: track.title,
-          artist: track.artist,
-          album: track.album,
-          duration: parseDuration(track.duration),
-          category: track.category
-        });
-        renderPlaylist();
-        updateHourCoverage();
-        updateNextUpPreview();
-      });
-
       els.libraryTableBody.appendChild(tr);
     });
   }
@@ -1224,10 +1163,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if (q) {
       filtered = filtered.filter(t => 
-        t.title.toLowerCase().includes(q) ||
-        t.artist.toLowerCase().includes(q) ||
-        t.album.toLowerCase().includes(q) ||
-        t.category.toLowerCase().includes(q)
+        (t.title && t.title.toLowerCase().includes(q)) ||
+        (t.artist && t.artist.toLowerCase().includes(q)) ||
+        (t.album && t.album.toLowerCase().includes(q)) ||
+        (t.category && t.category.toLowerCase().includes(q))
       );
     }
     renderLibrary(filtered);
@@ -1235,6 +1174,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderWatchedFolders() {
     els.watchedFoldersList.innerHTML = '';
+    if (state.watchedFolders.length === 0) {
+      els.watchedFoldersList.innerHTML = '<li style="padding:10px;color:var(--text-muted);font-size:0.75rem;">No watched folders configured yet.</li>';
+      return;
+    }
+
     state.watchedFolders.forEach((folder, idx) => {
       const li = document.createElement('li');
       li.className = 'folder-item';
@@ -1263,43 +1207,8 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="sweeper-title">${sw.title}</div>
         <div class="sweeper-actions">
           <button class="btn-action btn-quick-next" style="flex:1;">Insert Next</button>
-          <button class="btn-action btn-primary btn-quick-now" style="flex:1;">Play Now</button>
         </div>
       `;
-
-      card.querySelector('.btn-quick-next').addEventListener('click', () => {
-        state.playlist.unshift({
-          id: Date.now(),
-          type: sw.title.includes('Station ID') ? 'radioid' : 'sweeper',
-          title: sw.title,
-          artist: 'Station Branding',
-          album: 'Sweepers',
-          duration: sw.duration,
-          category: sw.title.includes('Station ID') ? 'StationID' : 'Jingle'
-        });
-        renderPlaylist();
-        updateHourCoverage();
-        updateNextUpPreview();
-      });
-
-      card.querySelector('.btn-quick-now').addEventListener('click', () => {
-        state.currentTrack = {
-          id: Date.now(),
-          type: sw.title.includes('Station ID') ? 'radioid' : 'sweeper',
-          title: sw.title,
-          artist: 'Station Branding',
-          album: 'Sweepers',
-          category: sw.title.includes('Station ID') ? 'StationID' : 'Jingle',
-          duration: sw.duration,
-          position: 0,
-          state: 'PLAYING',
-          waveformPeaks: generateMockWaveform(200)
-        };
-        renderCurrentTrack();
-        initWaveform();
-        updateHourCoverage();
-      });
-
       els.sweepersGrid.appendChild(card);
     });
   }
@@ -1349,12 +1258,6 @@ document.addEventListener('DOMContentLoaded', () => {
     state.autoDjFillCurrentHour = document.getElementById('cfgFillCurrentHour').value === 'true';
     state.autoDjDefaultTag = document.getElementById('cfgDefaultTag').value.trim();
 
-    // Normalization & Gapless
-    state.normalization.enabled = document.getElementById('cfgNormalizationEnabled').value === 'true';
-    state.normalization.targetDb = parseFloat(document.getElementById('cfgNormTarget').value);
-    state.gapless.silenceThresholdDb = parseFloat(document.getElementById('cfgSilenceDb').value);
-    state.gapless.silenceHoldMs = parseInt(document.getElementById('cfgSilenceHold').value, 10);
-
     // Parse raw text rules
     const rawRules = document.getElementById('cfgHourlyTagRulesRaw').value;
     parseRawRulesString(rawRules);
@@ -1363,7 +1266,7 @@ document.addEventListener('DOMContentLoaded', () => {
     updateRotationStatus();
     updateHourCoverage();
     els.settingsModal.classList.remove('open');
-    alert('Station rules and DSP configurations saved.');
+    alert('Station rules and configurations saved.');
   }
 
   function parseRawRulesString(raw) {

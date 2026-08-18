@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -7,6 +8,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using RadioApp.Models;
 using RadioApp.ViewModels;
 
 namespace RadioApp.Services;
@@ -31,13 +33,22 @@ public class WebServerService : IDisposable
 		_mainViewModel = mainViewModel;
 		Port = port;
 		_webRoot = webRoot ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "web");
+
+		// Subscribe to MainViewModel & Library updates to broadcast changes to connected web clients
+		_mainViewModel.PropertyChanged += (s, e) => _ = BroadcastStateAsync();
+		_mainViewModel.Queue.CollectionChanged += (s, e) => _ = BroadcastStateAsync();
+		if (_mainViewModel.Library != null)
+		{
+			_mainViewModel.Library.Items.CollectionChanged += (s, e) => _ = BroadcastStateAsync();
+			_mainViewModel.Library.WatchedFolders.CollectionChanged += (s, e) => _ = BroadcastStateAsync();
+		}
 	}
 
 	public void Start()
 	{
 		_cts = new CancellationTokenSource();
 
-		// Strategy 1: Try Wildcard Binding (All Network Interfaces)
+		// Strategy 1: Try Wildcard Binding
 		bool started = TryStartListener(new[] { $"http://+:{Port}/" });
 
 		if (!started)
@@ -54,7 +65,6 @@ public class WebServerService : IDisposable
 				$"http://127.0.0.1:{Port}/"
 			};
 
-			// Add local LAN IPs if available
 			try
 			{
 				string hostName = Dns.GetHostName();
@@ -86,7 +96,7 @@ public class WebServerService : IDisposable
 		}
 		else
 		{
-			throw new InvalidOperationException($"Unable to start embedded web server on port {Port}. Please check port availability.");
+			throw new InvalidOperationException($"Unable to start embedded web server on port {Port}.");
 		}
 	}
 
@@ -146,6 +156,17 @@ public class WebServerService : IDisposable
 	{
 		try
 		{
+			// Enable CORS for external access
+			context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
+			context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+			context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+
+			if (context.Request.HttpMethod == "OPTIONS")
+			{
+				context.Response.StatusCode = 204;
+				return;
+			}
+
 			if (context.Request.IsWebSocketRequest)
 			{
 				HttpListenerWebSocketContext wsContext = await context.AcceptWebSocketAsync(subProtocol: null);
@@ -155,7 +176,7 @@ public class WebServerService : IDisposable
 
 			string rawPath = context.Request.Url?.AbsolutePath.Trim('/') ?? string.Empty;
 
-			if (rawPath.StartsWith("api/", StringComparison.OrdinalIgnoreCase))
+			if (rawPath.StartsWith("api", StringComparison.OrdinalIgnoreCase))
 			{
 				await HandleApiRequestAsync(context, rawPath);
 				return;
@@ -184,12 +205,12 @@ public class WebServerService : IDisposable
 	{
 		Guid clientId = Guid.NewGuid();
 		_sockets[clientId] = socket;
-		byte[] buffer = new byte[4096];
+		byte[] buffer = new byte[8192];
 
 		try
 		{
-			// Send initial state sync
-			await BroadcastStateAsync();
+			// Send full initial state sync immediately on connect
+			await SendStateToSocketAsync(socket);
 
 			while (socket.State == WebSocketState.Open && !ct.IsCancellationRequested && !_isDisposed)
 			{
@@ -230,17 +251,30 @@ public class WebServerService : IDisposable
 			string action = actionEl.GetString() ?? string.Empty;
 			switch (action.ToUpperInvariant())
 			{
+				case "PLAY":
+					_mainViewModel.DeckA?.PlayCommand?.Execute(null);
+					break;
+				case "PAUSE":
+					_mainViewModel.DeckA?.PauseCommand?.Execute(null);
+					break;
+				case "STOP":
+					_mainViewModel.DeckA?.StopCommand?.Execute(null);
+					break;
+				case "PLAY_NEXT":
+				case "SKIP":
+					_mainViewModel.PlayNextCommand?.Execute(null);
+					break;
 				case "TOGGLE_STREAM":
 					_mainViewModel.ConnectStreamCommand?.Execute(null);
 					break;
-				case "PLAY_NEXT":
-					_mainViewModel.PlayNextCommand?.Execute(null);
+				case "CLEAR_QUEUE":
+					_mainViewModel.ClearQueueCommand?.Execute(null);
 					break;
-				case "SET_CROSSFADE":
-					if (root.TryGetProperty("value", out JsonElement cfVal))
-					{
-						_mainViewModel.Crossfade = cfVal.GetDouble();
-					}
+				case "AUTO_SCHEDULE_NOW":
+					_mainViewModel.AutoScheduleNowCommand?.Execute(null);
+					break;
+				case "RESCAN_LIBRARY":
+					_mainViewModel.Library?.RescanWatchedFoldersCommand?.Execute(null);
 					break;
 			}
 		}
@@ -250,58 +284,122 @@ public class WebServerService : IDisposable
 		}
 	}
 
-	private async Task BroadcastStateAsync()
+	public object GetFullStateObject()
 	{
-		var stateObj = new
+		bool isLive = _mainViewModel.StreamStatus.Contains("Live", StringComparison.OrdinalIgnoreCase) ||
+		              _mainViewModel.StreamStatus.Contains("Connected", StringComparison.OrdinalIgnoreCase);
+
+		var queueItems = _mainViewModel.Queue.Select((item, idx) => new
+		{
+			id = item.Id,
+			title = item.Title,
+			artist = item.Artist,
+			album = item.Album,
+			duration = item.Duration.TotalSeconds > 0 ? item.Duration.TotalSeconds : 180,
+			category = item.Category,
+			type = item.IsStationIdCue ? "radioid" : (item.IsSweeperCue ? "sweeper" : "song")
+		}).ToList();
+
+		var libraryItems = _mainViewModel.Library?.Items.Select(item => new
+		{
+			id = item.Id,
+			title = item.Title,
+			artist = item.Artist,
+			album = item.Album,
+			duration = $"{(int)item.Duration.TotalMinutes:00}:{item.Duration.Seconds:00}",
+			category = item.Category,
+			year = item.Year,
+			cueIn = item.CueIn.TotalSeconds,
+			cueOut = item.CueOut.TotalSeconds
+		}).ToList() ?? new();
+
+		var watchedFolders = _mainViewModel.Library?.WatchedFolders.ToList() ?? new();
+		var categories = _mainViewModel.Library?.CategoryOptions.ToList() ?? new();
+
+		return new
 		{
 			type = "STATE_SYNC",
 			data = new
 			{
+				isLive = isLive,
 				streamStatus = _mainViewModel.StreamStatus,
 				activityStatus = _mainViewModel.ActivityStatus,
+				headerStatus = _mainViewModel.HeaderStatus,
 				crossfade = _mainViewModel.Crossfade,
 				deckA = new
 				{
-					title = _mainViewModel.DeckA?.TrackTitle ?? string.Empty,
+					title = _mainViewModel.DeckA?.TrackTitle ?? "No track loaded",
 					artist = _mainViewModel.DeckA?.TrackArtist ?? string.Empty,
 					album = _mainViewModel.DeckA?.TrackAlbum ?? string.Empty,
 					state = _mainViewModel.DeckA?.PlaybackStateText ?? "Stopped",
 					position = _mainViewModel.DeckA?.Position.TotalSeconds ?? 0,
 					duration = _mainViewModel.DeckA?.Duration.TotalSeconds ?? 0
 				},
-				deckB = new
+				settings = new
 				{
-					title = _mainViewModel.DeckB?.TrackTitle ?? string.Empty,
-					artist = _mainViewModel.DeckB?.TrackArtist ?? string.Empty,
-					album = _mainViewModel.DeckB?.TrackAlbum ?? string.Empty,
-					state = _mainViewModel.DeckB?.PlaybackStateText ?? "Stopped",
-					position = _mainViewModel.DeckB?.Position.TotalSeconds ?? 0,
-					duration = _mainViewModel.DeckB?.Duration.TotalSeconds ?? 0
-				}
+					sweepersEnabled = _mainViewModel.SweepersEnabled,
+					sweeperFolder = _mainViewModel.SweeperFolder,
+					sweeperMin = _mainViewModel.SweeperMinSongs,
+					sweeperMax = _mainViewModel.SweeperMaxSongs,
+					radioIdsEnabled = _mainViewModel.RadioIdsEnabled,
+					radioIdFolder = _mainViewModel.RadioIdFolder,
+					radioIdMinute = _mainViewModel.RadioIdMinute,
+					toleranceBefore = _mainViewModel.RadioIdToleranceBeforeMinutes,
+					toleranceAfter = _mainViewModel.RadioIdToleranceAfterMinutes,
+					autoDjFillCurrentHour = _mainViewModel.AutoDjFillCurrentHour,
+					autoDjDefaultTag = _mainViewModel.AutoDjDefaultTag,
+					hourlyTagRules = _mainViewModel.AutoDjHourlyTagRules
+				},
+				queue = queueItems,
+				library = libraryItems,
+				watchedFolders = watchedFolders,
+				categories = categories
 			}
 		};
+	}
 
-		string json = JsonSerializer.Serialize(stateObj);
-		byte[] bytes = Encoding.UTF8.GetBytes(json);
+	private async Task BroadcastStateAsync()
+	{
+		if (_sockets.IsEmpty) return;
 
-		foreach (var (id, ws) in _sockets)
+		try
 		{
-			if (ws.State == WebSocketState.Open)
+			var stateObj = GetFullStateObject();
+			string json = JsonSerializer.Serialize(stateObj);
+			byte[] bytes = Encoding.UTF8.GetBytes(json);
+
+			foreach (var (id, ws) in _sockets)
 			{
-				try
+				if (ws.State == WebSocketState.Open)
 				{
-					await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+					try
+					{
+						await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+					}
+					catch { }
 				}
-				catch { }
 			}
 		}
+		catch { }
+	}
+
+	private async Task SendStateToSocketAsync(WebSocket socket)
+	{
+		try
+		{
+			var stateObj = GetFullStateObject();
+			string json = JsonSerializer.Serialize(stateObj);
+			byte[] bytes = Encoding.UTF8.GetBytes(json);
+			await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+		}
+		catch { }
 	}
 
 	private async Task HandleApiRequestAsync(HttpListenerContext context, string path)
 	{
 		context.Response.ContentType = "application/json";
-		var response = new { success = true, port = Port, timestamp = DateTime.UtcNow };
-		string json = JsonSerializer.Serialize(response);
+		var stateObj = GetFullStateObject();
+		string json = JsonSerializer.Serialize(stateObj);
 		byte[] data = Encoding.UTF8.GetBytes(json);
 		context.Response.ContentLength64 = data.Length;
 		await context.Response.OutputStream.WriteAsync(data, 0, data.Length);
