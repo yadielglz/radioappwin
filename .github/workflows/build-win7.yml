@@ -11,6 +11,7 @@ on:
       - 'recovery/3.58/recovered-source/**'
       - 'web/**'
       - 'windows-7-x64/**'
+      - '.config/dotnet-tools.json'
       - '.github/workflows/build-win7.yml'
 
 permissions:
@@ -32,7 +33,10 @@ jobs:
             8.0.x
             6.0.x
 
-      - name: Publish Windows 7 x64 package
+      - name: Restore WiX tool
+        run: dotnet tool restore
+
+      - name: Publish Windows 7 x64 application
         shell: pwsh
         run: |
           dotnet publish recovery/3.58/recovered-source/RadioApp.csproj `
@@ -51,7 +55,24 @@ jobs:
           }
           Get-ChildItem 'windows-7-x64/publish' | Select-Object Name, Length
 
-      - name: Package Windows 7 build
+      - name: Build Windows 7 MSI
+        shell: pwsh
+        working-directory: windows-7-x64/Installer
+        run: |
+          dotnet wix build Product.wxs `
+            -arch x64 `
+            -bindpath . `
+            -o ../../RadioApp-4.0.6-Windows7-x64.msi
+
+      - name: Verify MSI
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'RadioApp-4.0.6-Windows7-x64.msi')) {
+            throw 'Windows 7 MSI was not produced.'
+          }
+          Get-Item 'RadioApp-4.0.6-Windows7-x64.msi' | Select-Object Name, Length
+
+      - name: Package portable Windows 7 build
         shell: pwsh
         run: |
           Compress-Archive `
@@ -59,11 +80,13 @@ jobs:
             -DestinationPath 'RadioApp-4.0.6-Windows7-x64.zip' `
             -Force
 
-      - name: Upload Windows 7 artifact
+      - name: Upload Windows 7 build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: RadioApp-4.0.6-Windows7-x64
-          path: RadioApp-4.0.6-Windows7-x64.zip
+          path: |
+            RadioApp-4.0.6-Windows7-x64.zip
+            RadioApp-4.0.6-Windows7-x64.msi
           if-no-files-found: error
 
       - name: Publish GitHub Release from tag
@@ -78,15 +101,19 @@ jobs:
 
             Legacy compatibility build for Windows 7 SP1 64-bit.
 
-            - RadioApp version: 4.0.6
-            - Target: Windows 7 SP1 x64
-            - Runtime: .NET 6.0.36, self-contained
-            - Web control room uses HTTP polling fallback when WebSockets are unavailable
+            Downloads:
+            - `RadioApp-4.0.6-Windows7-x64.msi` - recommended installer
+            - `RadioApp-4.0.6-Windows7-x64.zip` - portable build
+
+            Runtime: .NET 6.0.36, self-contained.
+            The web control room uses HTTP polling fallback when WebSockets are unavailable.
 
             This legacy build targets an operating system and runtime that are no longer supported by Microsoft.
-          files: RadioApp-4.0.6-Windows7-x64.zip
+          files: |
+            RadioApp-4.0.6-Windows7-x64.msi
+            RadioApp-4.0.6-Windows7-x64.zip
 
-      - name: Publish initial Windows 7 release from main
+      - name: Publish or update Windows 7 release from main
         if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'Trigger Windows 7 release')
         uses: softprops/action-gh-release@v2
         with:
@@ -99,10 +126,14 @@ jobs:
 
             Legacy compatibility build for Windows 7 SP1 64-bit.
 
-            - RadioApp version: 4.0.6
-            - Target: Windows 7 SP1 x64
-            - Runtime: .NET 6.0.36, self-contained
-            - Web control room uses HTTP polling fallback when WebSockets are unavailable
+            Downloads:
+            - `RadioApp-4.0.6-Windows7-x64.msi` - recommended installer
+            - `RadioApp-4.0.6-Windows7-x64.zip` - portable build
+
+            Runtime: .NET 6.0.36, self-contained.
+            The web control room uses HTTP polling fallback when WebSockets are unavailable.
 
             This legacy build targets an operating system and runtime that are no longer supported by Microsoft.
-          files: RadioApp-4.0.6-Windows7-x64.zip
+          files: |
+            RadioApp-4.0.6-Windows7-x64.msi
+            RadioApp-4.0.6-Windows7-x64.zip
