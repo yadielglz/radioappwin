@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -16,60 +17,127 @@ namespace RadioApp.Services;
 /// </summary>
 public class WebServerService : IDisposable
 {
-	private readonly HttpListener _listener = new HttpListener();
+	private HttpListener? _listener;
 	private readonly MainViewModel _mainViewModel;
 	private readonly string _webRoot;
 	private CancellationTokenSource? _cts;
 	private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, WebSocket> _sockets = new();
+	private bool _isDisposed;
 
-	public int Port { get; }
+	public int Port { get; private set; }
 
 	public WebServerService(MainViewModel mainViewModel, int port = 5000, string? webRoot = null)
 	{
 		_mainViewModel = mainViewModel;
 		Port = port;
 		_webRoot = webRoot ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "web");
-
-		// Listen on all network interfaces
-		_listener.Prefixes.Add($"http://+:{port}/");
 	}
 
 	public void Start()
 	{
+		_cts = new CancellationTokenSource();
+
+		// Strategy 1: Try Wildcard Binding (All Network Interfaces)
+		bool started = TryStartListener(new[] { $"http://+:{Port}/" });
+
+		if (!started)
+		{
+			started = TryStartListener(new[] { $"http://*:{Port}/" });
+		}
+
+		// Strategy 2: Fallback to Localhost & Local IP addresses (Non-Admin mode)
+		if (!started)
+		{
+			var localPrefixes = new System.Collections.Generic.List<string>
+			{
+				$"http://localhost:{Port}/",
+				$"http://127.0.0.1:{Port}/"
+			};
+
+			// Add local LAN IPs if available
+			try
+			{
+				string hostName = Dns.GetHostName();
+				IPHostEntry hostEntry = Dns.GetHostEntry(hostName);
+				foreach (IPAddress ip in hostEntry.AddressList)
+				{
+					if (ip.AddressFamily == AddressFamily.InterNetwork)
+					{
+						localPrefixes.Add($"http://{ip}:{Port}/");
+					}
+				}
+			}
+			catch { }
+
+			started = TryStartListener(localPrefixes.ToArray());
+		}
+
+		// Strategy 3: Alternate Port 5001 if 5000 is occupied
+		if (!started && Port == 5000)
+		{
+			Port = 5001;
+			started = TryStartListener(new[] { $"http://localhost:{Port}/", $"http://127.0.0.1:{Port}/" });
+		}
+
+		if (started && _listener != null)
+		{
+			Task.Run(() => AcceptLoopAsync(_cts.Token));
+			Console.WriteLine($"[RadioApp WebServer] Studio Web UI active at port {Port}");
+		}
+		else
+		{
+			throw new InvalidOperationException($"Unable to start embedded web server on port {Port}. Please check port availability.");
+		}
+	}
+
+	private bool TryStartListener(string[] prefixes)
+	{
+		HttpListener? candidate = null;
 		try
 		{
-			_cts = new CancellationTokenSource();
-			_listener.Start();
-			Task.Run(() => AcceptLoopAsync(_cts.Token));
-			Console.WriteLine($"[RadioApp WebServer] Studio Web UI active at http://0.0.0.0:{Port}/");
+			candidate = new HttpListener();
+			foreach (string prefix in prefixes)
+			{
+				candidate.Prefixes.Add(prefix);
+			}
+			candidate.Start();
+			_listener = candidate;
+			return true;
 		}
-		catch (HttpListenerException ex)
+		catch
 		{
-			// Fallback to localhost if elevated prefix URL ACL is not present
-			_listener.Prefixes.Clear();
-			_listener.Prefixes.Add($"http://localhost:{Port}/");
-			_listener.Start();
-			Task.Run(() => AcceptLoopAsync(_cts!.Token));
-			Console.WriteLine($"[RadioApp WebServer] Studio Web UI fallback at http://localhost:{Port}/ ({ex.Message})");
+			try
+			{
+				candidate?.Close();
+			}
+			catch { }
+			return false;
 		}
 	}
 
 	private async Task AcceptLoopAsync(CancellationToken ct)
 	{
-		while (!ct.IsCancellationRequested && _listener.IsListening)
+		while (!ct.IsCancellationRequested && _listener != null && _listener.IsListening)
 		{
 			try
 			{
 				HttpListenerContext context = await _listener.GetContextAsync();
 				_ = ProcessRequestAsync(context, ct);
 			}
-			catch (Exception) when (ct.IsCancellationRequested)
+			catch (HttpListenerException) when (ct.IsCancellationRequested || _isDisposed)
+			{
+				break;
+			}
+			catch (ObjectDisposedException)
 			{
 				break;
 			}
 			catch (Exception ex)
 			{
-				Console.WriteLine($"[WebServer Error] {ex.Message}");
+				if (!ct.IsCancellationRequested && !_isDisposed)
+				{
+					Console.WriteLine($"[WebServer Error] {ex.Message}");
+				}
 			}
 		}
 	}
@@ -98,9 +166,13 @@ public class WebServerService : IDisposable
 		}
 		catch (Exception ex)
 		{
-			context.Response.StatusCode = 500;
-			using StreamWriter writer = new StreamWriter(context.Response.OutputStream);
-			await writer.WriteAsync($"Internal Server Error: {ex.Message}");
+			try
+			{
+				context.Response.StatusCode = 500;
+				using StreamWriter writer = new StreamWriter(context.Response.OutputStream);
+				await writer.WriteAsync($"Internal Server Error: {ex.Message}");
+			}
+			catch { }
 		}
 		finally
 		{
@@ -119,7 +191,7 @@ public class WebServerService : IDisposable
 			// Send initial state sync
 			await BroadcastStateAsync();
 
-			while (socket.State == WebSocketState.Open && !ct.IsCancellationRequested)
+			while (socket.State == WebSocketState.Open && !ct.IsCancellationRequested && !_isDisposed)
 			{
 				WebSocketReceiveResult result = await socket.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
 				if (result.MessageType == WebSocketMessageType.Close)
@@ -138,7 +210,11 @@ public class WebServerService : IDisposable
 			_sockets.TryRemove(clientId, out _);
 			if (socket.State == WebSocketState.Open)
 			{
-				await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed", CancellationToken.None);
+				try
+				{
+					await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "Closed", CancellationToken.None);
+				}
+				catch { }
 			}
 		}
 	}
@@ -156,6 +232,9 @@ public class WebServerService : IDisposable
 			{
 				case "TOGGLE_STREAM":
 					_mainViewModel.ConnectStreamCommand?.Execute(null);
+					break;
+				case "PLAY_NEXT":
+					_mainViewModel.PlayNextCommand?.Execute(null);
 					break;
 				case "SET_CROSSFADE":
 					if (root.TryGetProperty("value", out JsonElement cfVal))
@@ -183,21 +262,21 @@ public class WebServerService : IDisposable
 				crossfade = _mainViewModel.Crossfade,
 				deckA = new
 				{
-					title = _mainViewModel.DeckA.TrackTitle,
-					artist = _mainViewModel.DeckA.TrackArtist,
-					album = _mainViewModel.DeckA.TrackAlbum,
-					state = _mainViewModel.DeckA.PlaybackStateText,
-					position = _mainViewModel.DeckA.Position.TotalSeconds,
-					duration = _mainViewModel.DeckA.Duration.TotalSeconds
+					title = _mainViewModel.DeckA?.TrackTitle ?? string.Empty,
+					artist = _mainViewModel.DeckA?.TrackArtist ?? string.Empty,
+					album = _mainViewModel.DeckA?.TrackAlbum ?? string.Empty,
+					state = _mainViewModel.DeckA?.PlaybackStateText ?? "Stopped",
+					position = _mainViewModel.DeckA?.Position.TotalSeconds ?? 0,
+					duration = _mainViewModel.DeckA?.Duration.TotalSeconds ?? 0
 				},
 				deckB = new
 				{
-					title = _mainViewModel.DeckB.TrackTitle,
-					artist = _mainViewModel.DeckB.TrackArtist,
-					album = _mainViewModel.DeckB.TrackAlbum,
-					state = _mainViewModel.DeckB.PlaybackStateText,
-					position = _mainViewModel.DeckB.Position.TotalSeconds,
-					duration = _mainViewModel.DeckB.Duration.TotalSeconds
+					title = _mainViewModel.DeckB?.TrackTitle ?? string.Empty,
+					artist = _mainViewModel.DeckB?.TrackArtist ?? string.Empty,
+					album = _mainViewModel.DeckB?.TrackAlbum ?? string.Empty,
+					state = _mainViewModel.DeckB?.PlaybackStateText ?? "Stopped",
+					position = _mainViewModel.DeckB?.Position.TotalSeconds ?? 0,
+					duration = _mainViewModel.DeckB?.Duration.TotalSeconds ?? 0
 				}
 			}
 		};
@@ -221,7 +300,7 @@ public class WebServerService : IDisposable
 	private async Task HandleApiRequestAsync(HttpListenerContext context, string path)
 	{
 		context.Response.ContentType = "application/json";
-		var response = new { success = true, timestamp = DateTime.UtcNow };
+		var response = new { success = true, port = Port, timestamp = DateTime.UtcNow };
 		string json = JsonSerializer.Serialize(response);
 		byte[] data = Encoding.UTF8.GetBytes(json);
 		context.Response.ContentLength64 = data.Length;
@@ -265,9 +344,20 @@ public class WebServerService : IDisposable
 
 	public void Dispose()
 	{
+		if (_isDisposed) return;
+		_isDisposed = true;
+
 		_cts?.Cancel();
-		try { _listener.Stop(); } catch { }
-		try { _listener.Close(); } catch { }
+		try
+		{
+			if (_listener != null && _listener.IsListening)
+			{
+				_listener.Stop();
+			}
+			_listener?.Close();
+		}
+		catch { }
+
 		_sockets.Clear();
 	}
 }

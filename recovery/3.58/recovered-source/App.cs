@@ -32,7 +32,7 @@ public partial class App : Application
 			_webServer.Start();
 
 			// Initialize the Windows Taskbar Notification Area (System Tray) Icon
-			_trayIcon = new TrayIconService(_mainViewModel, webPort: 5000);
+			_trayIcon = new TrayIconService(_mainViewModel, webPort: _webServer.Port);
 			_trayIcon.ShowNotification(
 				"RadioApp 5.0 Active",
 				"RadioApp 5.0 is running headlessly. Double-click this icon to open the Web Studio Dashboard.",
