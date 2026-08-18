@@ -179,7 +179,7 @@ public class WebServerService : IDisposable
 
 			string rawPath = context.Request.Url?.AbsolutePath.Trim('/') ?? string.Empty;
 
-			if (rawPath.StartsWith("api", StringComparison.OrdinalIgnoreCase))
+			if (rawPath.Equals("api", StringComparison.OrdinalIgnoreCase) || rawPath.StartsWith("api/", StringComparison.OrdinalIgnoreCase))
 			{
 				await HandleApiRequestAsync(context, rawPath);
 				return;
@@ -399,7 +399,9 @@ public class WebServerService : IDisposable
 	private async Task HandleApiRequestAsync(HttpListenerContext context, string path)
 	{
 		context.Response.ContentType = "application/json";
-		string subPath = path.Substring("api".Length).Trim('/');
+		string subPath = path.StartsWith("api/", StringComparison.OrdinalIgnoreCase)
+			? path.Substring(4).Trim('/')
+			: (path.Equals("api", StringComparison.OrdinalIgnoreCase) ? string.Empty : path);
 
 		// 1. GET /api/drives -> Enumerate all physical and mapped network drives
 		if (subPath.Equals("drives", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "GET")
