@@ -2,6 +2,11 @@
  * RadioApp Web Control Room - API & WebSocket Bridge
  * Handles real-time communication with the C# RadioApp daemon.
  * Queries live SQLite database, real Windows filesystem drives & directories.
+ *
+ * Windows 7 note:
+ * Native server-side WebSockets are unavailable on Windows 7. When the
+ * WebSocket connection cannot be established, the client automatically
+ * falls back to HTTP state polling so the Studio remains usable.
  */
 
 class RadioApiClient {
@@ -10,7 +15,9 @@ class RadioApiClient {
     this.isConnected = false;
     this.eventListeners = new Map();
     this.reconnectTimer = null;
-    
+    this.pollTimer = null;
+    this.pollIntervalMs = 1000;
+
     this.baseUrl = window.location.origin;
     this.wsUrl = (window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host + '/ws';
   }
@@ -22,14 +29,31 @@ class RadioApiClient {
 
   async fetchInitialState() {
     try {
-      const res = await fetch('/api/state');
+      const res = await fetch('/api/state', { cache: 'no-store' });
       if (res.ok) {
         const payload = await res.json();
         this.emit('stateSync', payload.data || payload);
+        return true;
       }
     } catch (e) {
-      console.warn('[RadioApp API] Initial HTTP state fetch failed. Awaiting WebSocket...');
+      console.warn('[RadioApp API] HTTP state fetch failed:', e);
     }
+    return false;
+  }
+
+  startPollingFallback() {
+    if (this.pollTimer) return;
+    console.warn('[RadioApp API] WebSocket unavailable. Using HTTP polling compatibility mode.');
+    this.fetchInitialState();
+    this.pollTimer = setInterval(() => {
+      if (!this.isConnected) this.fetchInitialState();
+    }, this.pollIntervalMs);
+  }
+
+  stopPollingFallback() {
+    if (!this.pollTimer) return;
+    clearInterval(this.pollTimer);
+    this.pollTimer = null;
   }
 
   async fetchDrives() {
@@ -120,7 +144,8 @@ class RadioApiClient {
       this.ws.onopen = () => {
         console.log('[RadioApp WS] Connected to live C# broadcast engine.');
         this.isConnected = true;
-        this.emit('connectionChange', { connected: true, live: true });
+        this.stopPollingFallback();
+        this.emit('connectionChange', { connected: true, live: true, transport: 'websocket' });
       };
 
       this.ws.onmessage = (event) => {
@@ -134,14 +159,19 @@ class RadioApiClient {
 
       this.ws.onclose = () => {
         this.isConnected = false;
-        this.emit('connectionChange', { connected: false, live: false });
+        this.emit('connectionChange', { connected: true, live: false, transport: 'http-polling' });
+        this.startPollingFallback();
         this.scheduleReconnect();
       };
 
       this.ws.onerror = () => {
-        this.emit('connectionChange', { connected: false, live: false });
+        this.isConnected = false;
+        this.emit('connectionChange', { connected: true, live: false, transport: 'http-polling' });
+        this.startPollingFallback();
       };
     } catch (err) {
+      this.isConnected = false;
+      this.startPollingFallback();
       this.scheduleReconnect();
     }
   }
@@ -163,7 +193,9 @@ class RadioApiClient {
     const data = JSON.stringify({ action, ...payload });
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(data);
+      return true;
     }
+    return false;
   }
 
   deckPlay(deckId) {
