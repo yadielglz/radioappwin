@@ -72,7 +72,7 @@ public class TrayIconService : IDisposable
 
 		var nextTrackItem = new ToolStripMenuItem("⏭️ Next Track (Gapless Fade)", null, (s, e) =>
 		{
-			_mainViewModel.DeckA?.NextCommand?.Execute(null);
+			_mainViewModel.PlayNextCommand?.Execute(null);
 		});
 		contextMenu.Items.Add(nextTrackItem);
 

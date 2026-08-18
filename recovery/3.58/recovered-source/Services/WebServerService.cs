@@ -186,7 +186,7 @@ public class WebServerService : IDisposable
 					title = _mainViewModel.DeckA.TrackTitle,
 					artist = _mainViewModel.DeckA.TrackArtist,
 					album = _mainViewModel.DeckA.TrackAlbum,
-					state = _mainViewModel.DeckA.PlaybackState.ToString(),
+					state = _mainViewModel.DeckA.PlaybackStateText,
 					position = _mainViewModel.DeckA.Position.TotalSeconds,
 					duration = _mainViewModel.DeckA.Duration.TotalSeconds
 				},
@@ -195,7 +195,7 @@ public class WebServerService : IDisposable
 					title = _mainViewModel.DeckB.TrackTitle,
 					artist = _mainViewModel.DeckB.TrackArtist,
 					album = _mainViewModel.DeckB.TrackAlbum,
-					state = _mainViewModel.DeckB.PlaybackState.ToString(),
+					state = _mainViewModel.DeckB.PlaybackStateText,
 					position = _mainViewModel.DeckB.Position.TotalSeconds,
 					duration = _mainViewModel.DeckB.Duration.TotalSeconds
 				}
