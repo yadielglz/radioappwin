@@ -166,14 +166,32 @@ class RadioApiClient {
     }
   }
 
-  deckPlay(deckId) { this.sendCommand('PLAY', { deck: deckId }); }
-  deckPause(deckId) { this.sendCommand('PAUSE', { deck: deckId }); }
-  deckStop(deckId) { this.sendCommand('STOP', { deck: deckId }); }
-  deckSkip(deckId) { this.sendCommand('SKIP', { deck: deckId }); }
+  deckPlay(deckId) {
+    this.sendCommand('PLAY', { deck: deckId });
+    try { fetch('/api/player/play', { method: 'POST' }); } catch {}
+  }
+  deckPause(deckId) {
+    this.sendCommand('PAUSE', { deck: deckId });
+    try { fetch('/api/player/pause', { method: 'POST' }); } catch {}
+  }
+  deckStop(deckId) {
+    this.sendCommand('STOP', { deck: deckId });
+    try { fetch('/api/player/pause', { method: 'POST' }); } catch {}
+  }
+  deckSkip(deckId) {
+    this.sendCommand('SKIP', { deck: deckId });
+    try { fetch('/api/player/skip', { method: 'POST' }); } catch {}
+  }
   deckCue(deckId) { this.sendCommand('CUE', { deck: deckId }); }
   toggleStream() { this.sendCommand('TOGGLE_STREAM'); }
-  startStream() { this.sendCommand('CONNECT_STREAM'); }
-  stopStream() { this.sendCommand('DISCONNECT_STREAM'); }
+  startStream() {
+    this.sendCommand('CONNECT_STREAM');
+    try { fetch('/api/stream/connect', { method: 'POST' }); } catch {}
+  }
+  stopStream() {
+    this.sendCommand('DISCONNECT_STREAM');
+    try { fetch('/api/stream/disconnect', { method: 'POST' }); } catch {}
+  }
   clearQueue() { this.sendCommand('CLEAR_QUEUE'); }
   rescanLibrary() { this.sendCommand('RESCAN_LIBRARY'); }
   setVolume(deckId, val) { this.sendCommand('SET_VOLUME', { deck: deckId, volume: val }); }

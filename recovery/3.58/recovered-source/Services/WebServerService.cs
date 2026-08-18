@@ -714,6 +714,51 @@ public class WebServerService : IDisposable
 			return;
 		}
 
+		// 6. POST /api/stream/connect
+		if (subPath.Equals("stream/connect", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "POST")
+		{
+			_mainViewModel.ConnectStreamCommand?.Execute(null);
+			_ = RequestPlayerUpdateAsync();
+			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true, streamStatus = _mainViewModel.StreamStatus }));
+			return;
+		}
+
+		// 7. POST /api/stream/disconnect
+		if (subPath.Equals("stream/disconnect", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "POST")
+		{
+			_mainViewModel.DisconnectStreamCommand?.Execute(null);
+			_ = RequestPlayerUpdateAsync();
+			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true, streamStatus = _mainViewModel.StreamStatus }));
+			return;
+		}
+
+		// 8. POST /api/player/play
+		if (subPath.Equals("player/play", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "POST")
+		{
+			_mainViewModel.DeckA?.PlayCommand?.Execute(null);
+			_ = RequestPlayerUpdateAsync();
+			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true }));
+			return;
+		}
+
+		// 9. POST /api/player/pause
+		if (subPath.Equals("player/pause", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "POST")
+		{
+			_mainViewModel.DeckA?.PauseCommand?.Execute(null);
+			_ = RequestPlayerUpdateAsync();
+			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true }));
+			return;
+		}
+
+		// 10. POST /api/player/skip
+		if (subPath.Equals("player/skip", StringComparison.OrdinalIgnoreCase) && context.Request.HttpMethod == "POST")
+		{
+			_mainViewModel.PlayNextCommand?.Execute(null);
+			_ = RequestPlayerUpdateAsync();
+			await WriteJsonResponseAsync(context, JsonSerializer.Serialize(new { success = true }));
+			return;
+		}
+
 		// Default /api/state fallback
 		var stateObj = GetFullStateObject();
 		string json = JsonSerializer.Serialize(stateObj);
