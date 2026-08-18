@@ -1,0 +1,114 @@
+name: Build and Release RadioApp 4.1.0 Windows 7
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - windows7-4.1.0
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build RadioApp 4.1.0 Windows 7 x64
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDKs
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            6.0.x
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: Restore project
+        run: dotnet restore recovery/3.58/recovered-source/RadioApp.csproj
+
+      - name: Publish Windows 7 x64 desktop build
+        shell: pwsh
+        run: |
+          dotnet publish recovery/3.58/recovered-source/RadioApp.csproj `
+            -c Release `
+            -f net6.0-windows7.0 `
+            -r win-x64 `
+            --self-contained true `
+            -p:RuntimeFrameworkVersion=6.0.36 `
+            -o windows-7-4.1.0/publish
+
+      - name: Verify desktop executable
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'windows-7-4.1.0/publish/RadioApp.exe')) {
+            throw 'RadioApp.exe was not produced.'
+          }
+          if (Test-Path 'windows-7-4.1.0/publish/web') {
+            throw 'Unexpected web application payload found in Windows 7 desktop build.'
+          }
+          Get-ChildItem 'windows-7-4.1.0/publish' | Select-Object Name, Length
+
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          Compress-Archive `
+            -Path 'windows-7-4.1.0/publish/*' `
+            -DestinationPath 'RadioApp-4.1.0-Windows7-x64.zip' `
+            -Force
+
+      - name: Build MSI installer
+        shell: pwsh
+        run: |
+          dotnet wix build windows-7-4.1.0/Installer/Product.wxs `
+            -arch x64 `
+            -o RadioApp-4.1.0-Windows7-x64.msi
+
+      - name: Verify release assets
+        shell: pwsh
+        run: |
+          $assets = @(
+            'RadioApp-4.1.0-Windows7-x64.zip',
+            'RadioApp-4.1.0-Windows7-x64.msi'
+          )
+          foreach ($asset in $assets) {
+            if (!(Test-Path $asset)) { throw "Missing release asset: $asset" }
+            if ((Get-Item $asset).Length -le 0) { throw "Empty release asset: $asset" }
+          }
+
+      - name: Upload validated artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: RadioApp-4.1.0-Windows7-x64
+          path: |
+            RadioApp-4.1.0-Windows7-x64.zip
+            RadioApp-4.1.0-Windows7-x64.msi
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: contains(github.event.head_commit.message, 'Publish RadioApp 4.1.0 Windows 7')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: RadioApp 4.1.0 for Windows 7
+          tag_name: v4.1.0-win7
+          target_commitish: windows7-4.1.0
+          generate_release_notes: false
+          body: |
+            ## RadioApp 4.1.0 for Windows 7 SP1 x64
+
+            Desktop-only compatibility release based on the pre-redesign RadioApp 4.0.6 codebase.
+
+            - Classic WPF desktop interface
+            - No Web Studio or headless web service
+            - Windows 7 SP1 x64 target
+            - Self-contained .NET 6.0.36 runtime
+            - MSI installer and portable ZIP included
+
+            Windows 7 and .NET 6 are no longer supported by Microsoft. Use this build only for legacy systems.
+          files: |
+            RadioApp-4.1.0-Windows7-x64.zip
+            RadioApp-4.1.0-Windows7-x64.msi
