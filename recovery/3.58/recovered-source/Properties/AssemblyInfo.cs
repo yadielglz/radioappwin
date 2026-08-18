@@ -5,10 +5,10 @@ using System.Runtime.Versioning;
 
 [assembly: AssemblyCompany("RadioApp")]
 [assembly: AssemblyConfiguration("Release")]
-[assembly: AssemblyFileVersion("4.0.6.0")]
-[assembly: AssemblyInformationalVersion("4.0.6")]
+[assembly: AssemblyFileVersion("4.1.0.0")]
+[assembly: AssemblyInformationalVersion("4.1.0-windows7")]
 [assembly: AssemblyProduct("RadioApp")]
 [assembly: AssemblyTitle("RadioApp")]
 [assembly: TargetPlatform("Windows7.0")]
 [assembly: SupportedOSPlatform("Windows7.0")]
-[assembly: AssemblyVersion("4.0.6.0")]
+[assembly: AssemblyVersion("4.1.0.0")]
