@@ -57,6 +57,30 @@ public class MainViewModel : ViewModelBase, IDisposable
 
 	private string _autoDjHourlyTagRules = string.Empty;
 
+	private int _autoDjArtistSeparationMinutes = 45;
+
+	private int _autoDjTrackSeparationHours = 2;
+
+	private int _autoDjCommercialIntervalSongs = 6;
+
+	private bool _silenceWatchdogEnabled = true;
+
+	private int _silenceWatchdogTimeoutSeconds = 6;
+
+	private bool _topOfHourSyncEnabled = true;
+
+	private int _topOfHourTargetMinute;
+
+	private bool _nowPlayingFileExportEnabled = true;
+
+	private string _nowPlayingFilePath = string.Empty;
+
+	private string _nowPlayingFormat = "{artist} - {title}";
+
+	private TimeSpan _lastProgramPosition = TimeSpan.Zero;
+
+	private TimeSpan _programStallDuration = TimeSpan.Zero;
+
 	private bool _gaplessPlaybackEnabled = true;
 
 	private double _gaplessSilenceThresholdDb = -42.0;
@@ -381,6 +405,114 @@ public class MainViewModel : ViewModelBase, IDisposable
 				SaveAutomationSettings();
 				EnsureAutoDjQueue();
 				UpdateAutomationCue();
+			}
+		}
+	}
+
+	public int AutoDjArtistSeparationMinutes
+	{
+		get => _autoDjArtistSeparationMinutes;
+		set
+		{
+			if (SetProperty(ref _autoDjArtistSeparationMinutes, Math.Clamp(value, 0, 300), "AutoDjArtistSeparationMinutes"))
+			{
+				SaveAutomationSettings();
+			}
+		}
+	}
+
+	public int AutoDjTrackSeparationHours
+	{
+		get => _autoDjTrackSeparationHours;
+		set
+		{
+			if (SetProperty(ref _autoDjTrackSeparationHours, Math.Clamp(value, 0, 72), "AutoDjTrackSeparationHours"))
+			{
+				SaveAutomationSettings();
+			}
+		}
+	}
+
+	public int AutoDjCommercialIntervalSongs
+	{
+		get => _autoDjCommercialIntervalSongs;
+		set
+		{
+			if (SetProperty(ref _autoDjCommercialIntervalSongs, Math.Clamp(value, 0, 50), "AutoDjCommercialIntervalSongs"))
+			{
+				SaveAutomationSettings();
+			}
+		}
+	}
+
+	public bool SilenceWatchdogEnabled
+	{
+		get => _silenceWatchdogEnabled;
+		set
+		{
+			if (SetProperty(ref _silenceWatchdogEnabled, value, "SilenceWatchdogEnabled"))
+			{
+				SaveAutomationSettings();
+			}
+		}
+	}
+
+	public int SilenceWatchdogTimeoutSeconds
+	{
+		get => _silenceWatchdogTimeoutSeconds;
+		set
+		{
+			if (SetProperty(ref _silenceWatchdogTimeoutSeconds, Math.Clamp(value, 3, 60), "SilenceWatchdogTimeoutSeconds"))
+			{
+				SaveAutomationSettings();
+			}
+		}
+	}
+
+	public bool TopOfHourSyncEnabled
+	{
+		get => _topOfHourSyncEnabled;
+		set
+		{
+			if (SetProperty(ref _topOfHourSyncEnabled, value, "TopOfHourSyncEnabled"))
+			{
+				SaveAutomationSettings();
+			}
+		}
+	}
+
+	public bool NowPlayingFileExportEnabled
+	{
+		get => _nowPlayingFileExportEnabled;
+		set
+		{
+			if (SetProperty(ref _nowPlayingFileExportEnabled, value, "NowPlayingFileExportEnabled"))
+			{
+				SaveAutomationSettings();
+			}
+		}
+	}
+
+	public string NowPlayingFilePath
+	{
+		get => _nowPlayingFilePath;
+		set
+		{
+			if (SetProperty(ref _nowPlayingFilePath, value, "NowPlayingFilePath"))
+			{
+				SaveAutomationSettings();
+			}
+		}
+	}
+
+	public string NowPlayingFormat
+	{
+		get => _nowPlayingFormat;
+		set
+		{
+			if (SetProperty(ref _nowPlayingFormat, value, "NowPlayingFormat"))
+			{
+				SaveAutomationSettings();
 			}
 		}
 	}
@@ -955,6 +1087,7 @@ public class MainViewModel : ViewModelBase, IDisposable
 				StreamStatus = _streamingService.GetConnectionSummary();
 				CheckStreamHealth();
 			}
+			CheckSilenceWatchdog();
 			UpdateHeaderStatus();
 		};
 		_clockTimer.Start();
@@ -1203,6 +1336,8 @@ public class MainViewModel : ViewModelBase, IDisposable
 			ProgramPlayer.PlayCommand.Execute(null);
 		}
 		_currentProgramItem = item;
+		Library.MarkItemPlayed(item);
+		ExportNowPlayingFile(item);
 		if (IsRadioId(item, RadioIdFolder))
 		{
 			MarkRadioIdServed();
@@ -1217,10 +1352,11 @@ public class MainViewModel : ViewModelBase, IDisposable
 
 	private LibraryItem? PickNextAutomationItem()
 	{
+		int commercialInterval = AutoDjCommercialIntervalSongs > 0 ? AutoDjCommercialIntervalSongs : 6;
 		_songsSinceCommercial++;
-		if (_songsSinceCommercial >= 6)
+		if (AutoDjCommercialIntervalSongs > 0 && _songsSinceCommercial >= commercialInterval)
 		{
-			LibraryItem commercial = Library.GetRandomItem("Commercial", "Commercials", "Ad", "Ads");
+			LibraryItem commercial = Library.GetNextTrack(new[] { "Commercial", "Commercials", "Ad", "Ads" }, currentlyQueued: Queue);
 			if (commercial != null)
 			{
 				_songsSinceCommercial = 0;
@@ -1230,13 +1366,47 @@ public class MainViewModel : ViewModelBase, IDisposable
 		string activeTag = GetActiveAutoDjTag();
 		if (!string.IsNullOrWhiteSpace(activeTag))
 		{
-			LibraryItem taggedItem = Library.GetRandomMusicByTag(activeTag);
+			LibraryItem taggedItem = Library.GetNextTrack(tag: activeTag, currentlyQueued: Queue);
 			if (taggedItem != null)
 			{
 				return taggedItem;
 			}
 		}
-		return Library.GetRandomItem("Music", "Song", "Uncategorized");
+		return Library.GetNextTrack(new[] { "Music", "Song", "Uncategorized" }, currentlyQueued: Queue);
+	}
+
+	private void ExportNowPlayingFile(LibraryItem? item)
+	{
+		if (!NowPlayingFileExportEnabled || item == null || item.IsSweeperCue || item.IsStationIdCue)
+		{
+			return;
+		}
+		Task.Run(() =>
+		{
+			try
+			{
+				string filePath = string.IsNullOrWhiteSpace(NowPlayingFilePath)
+					? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "RadioApp", "nowplaying.txt")
+					: NowPlayingFilePath;
+				string? dir = Path.GetDirectoryName(filePath);
+				if (!string.IsNullOrWhiteSpace(dir))
+				{
+					Directory.CreateDirectory(dir);
+				}
+				string format = string.IsNullOrWhiteSpace(NowPlayingFormat) ? "{artist} - {title}" : NowPlayingFormat;
+				string content = format
+					.Replace("{artist}", item.Artist ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+					.Replace("{title}", item.Title ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+					.Replace("{album}", item.Album ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+					.Replace("{category}", item.Category ?? string.Empty, StringComparison.OrdinalIgnoreCase)
+					.Replace("{duration}", item.DurationText ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+
+				System.IO.File.WriteAllText(filePath, content.Trim());
+			}
+			catch
+			{
+			}
+		});
 	}
 
 	private void OnScheduleDue(ScheduleItem item)
@@ -1280,7 +1450,7 @@ public class MainViewModel : ViewModelBase, IDisposable
 	{
 		List<LibraryItem> tracks = (from _ in GetLibraryItemsInFolder(item.FilePath)
 			where !_.IsSweeperCue && !_.IsStationIdCue
-			orderby Random.Shared.Next()
+			orderby _.LastPlayedAtUtc ?? DateTime.MinValue, _.PlayCount, Random.Shared.Next()
 			select _).ToList();
 		if (tracks.Count == 0)
 		{
@@ -1422,6 +1592,8 @@ public class MainViewModel : ViewModelBase, IDisposable
 				Queue.RemoveAt(0);
 			}
 			_currentProgramItem = item;
+			Library.MarkItemPlayed(item);
+			ExportNowPlayingFile(item);
 			ProgramPlayer.SetTrackFromPreload(item);
 			if (IsRadioId(item, RadioIdFolder))
 			{
@@ -1616,6 +1788,16 @@ public class MainViewModel : ViewModelBase, IDisposable
 		_autoDjQueueDepth = Math.Max(1, settings.AutoDjQueueDepth);
 		_autoDjDefaultTag = settings.AutoDjDefaultTag;
 		_autoDjHourlyTagRules = settings.AutoDjHourlyTagRules;
+		_autoDjArtistSeparationMinutes = Math.Clamp(settings.AutoDjArtistSeparationMinutes, 0, 300);
+		_autoDjTrackSeparationHours = Math.Clamp(settings.AutoDjTrackSeparationHours, 0, 72);
+		_autoDjCommercialIntervalSongs = Math.Clamp(settings.AutoDjCommercialIntervalSongs, 0, 50);
+		_silenceWatchdogEnabled = settings.SilenceWatchdogEnabled;
+		_silenceWatchdogTimeoutSeconds = Math.Clamp(settings.SilenceWatchdogTimeoutSeconds, 3, 60);
+		_topOfHourSyncEnabled = settings.TopOfHourSyncEnabled;
+		_topOfHourTargetMinute = Math.Clamp(settings.TopOfHourTargetMinute, 0, 59);
+		_nowPlayingFileExportEnabled = settings.NowPlayingFileExportEnabled;
+		_nowPlayingFilePath = settings.NowPlayingFilePath;
+		_nowPlayingFormat = string.IsNullOrWhiteSpace(settings.NowPlayingFormat) ? "{artist} - {title}" : settings.NowPlayingFormat;
 		_selectedOutputDeviceNumber = settings.OutputDeviceNumber;
 		_selectedInputDeviceNumber = settings.InputDeviceNumber;
 		_audioNormalizationEnabled = settings.AudioNormalizationEnabled;
@@ -1659,6 +1841,15 @@ public class MainViewModel : ViewModelBase, IDisposable
 		_settings.AutoDjQueueDepth = AutoDjQueueDepth;
 		_settings.AutoDjDefaultTag = AutoDjDefaultTag;
 		_settings.AutoDjHourlyTagRules = AutoDjHourlyTagRules;
+		_settings.AutoDjArtistSeparationMinutes = AutoDjArtistSeparationMinutes;
+		_settings.AutoDjTrackSeparationHours = AutoDjTrackSeparationHours;
+		_settings.AutoDjCommercialIntervalSongs = AutoDjCommercialIntervalSongs;
+		_settings.SilenceWatchdogEnabled = SilenceWatchdogEnabled;
+		_settings.SilenceWatchdogTimeoutSeconds = SilenceWatchdogTimeoutSeconds;
+		_settings.TopOfHourSyncEnabled = TopOfHourSyncEnabled;
+		_settings.NowPlayingFileExportEnabled = NowPlayingFileExportEnabled;
+		_settings.NowPlayingFilePath = NowPlayingFilePath;
+		_settings.NowPlayingFormat = NowPlayingFormat;
 		_settingsService.Save(_settings);
 	}
 
@@ -2496,6 +2687,44 @@ public class MainViewModel : ViewModelBase, IDisposable
 			return string.Equals(item.Category, "ID", StringComparison.OrdinalIgnoreCase);
 		}
 		return true;
+	}
+
+	private void CheckSilenceWatchdog()
+	{
+		if (!SilenceWatchdogEnabled || !ProgramPlayer.IsPlaying || _currentProgramItem == null)
+		{
+			_programStallDuration = TimeSpan.Zero;
+			_lastProgramPosition = TimeSpan.Zero;
+			return;
+		}
+
+		TimeSpan currentPosition = ProgramPlayer.Position;
+		if (currentPosition == _lastProgramPosition && ProgramPlayer.Duration > TimeSpan.FromSeconds(5.0))
+		{
+			_programStallDuration += TimeSpan.FromSeconds(1.0);
+			if (_programStallDuration >= TimeSpan.FromSeconds(Math.Max(3, SilenceWatchdogTimeoutSeconds)))
+			{
+				_programStallDuration = TimeSpan.Zero;
+				ActivityStatus = "Dead-air watchdog: audio stall detected, auto-recovering playout.";
+				if (Queue.Count > 0)
+				{
+					PlayNextFromQueue();
+				}
+				else if (AutoScheduleEnabled)
+				{
+					LibraryItem? next = PickNextAutomationItem();
+					if (next != null)
+					{
+						PlayLibraryItem(next);
+					}
+				}
+			}
+		}
+		else
+		{
+			_lastProgramPosition = currentPosition;
+			_programStallDuration = TimeSpan.Zero;
+		}
 	}
 
 	public void Dispose()

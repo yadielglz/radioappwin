@@ -6,12 +6,12 @@
   <Package
     Name="RadioApp"
     Manufacturer="Glz Technical Services | Glz Tech"
-    Version="4.0.6"
+    Version="26.1007.0900"
     UpgradeCode="{A2141043-45E0-449B-B425-E59AE5E5B38F}"
     Scope="perMachine"
     InstallerVersion="500">
 
-    <SummaryInformation Description="RadioApp 4.0.6 Installer" Manufacturer="Glz Technical Services | Glz Tech" />
+    <SummaryInformation Description="RadioApp 26.1007.0900 Installer" Manufacturer="Glz Technical Services | Glz Tech" />
     <MajorUpgrade DowngradeErrorMessage="A newer version of RadioApp is already installed." Schedule="afterInstallValidate" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="$(var.CabinetCompression)" />
 

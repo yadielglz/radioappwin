@@ -56,6 +56,14 @@ public class LibraryViewModel : ViewModelBase, IDisposable
 
 	private readonly Random _random = new Random();
 
+	private readonly Dictionary<string, List<int>> _rotationDecks = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+
+	private readonly Queue<int> _recentPlayedItemIds = new Queue<int>();
+
+	private readonly Queue<(string Artist, DateTime PlayedAtUtc)> _recentArtists = new Queue<(string Artist, DateTime PlayedAtUtc)>();
+
+	private readonly Queue<(string Title, DateTime PlayedAtUtc)> _recentTitles = new Queue<(string Title, DateTime PlayedAtUtc)>();
+
 	private readonly Queue<string> _recentSweepers = new Queue<string>();
 
 	private readonly Queue<string> _recentRadioIds = new Queue<string>();
@@ -300,6 +308,7 @@ public class LibraryViewModel : ViewModelBase, IDisposable
 	public void Refresh()
 	{
 		_context.ChangeTracker.Clear();
+		_rotationDecks.Clear();
 		RefreshView();
 	}
 
@@ -321,6 +330,7 @@ public class LibraryViewModel : ViewModelBase, IDisposable
 	public void SaveChanges()
 	{
 		_context.SaveChanges();
+		_rotationDecks.Clear();
 		RefreshCategoryOptions();
 		ApplyFilter();
 	}
@@ -329,6 +339,7 @@ public class LibraryViewModel : ViewModelBase, IDisposable
 	{
 		_context.LibraryItems.Add(item);
 		_context.SaveChanges();
+		_rotationDecks.Clear();
 		Items.Add(item);
 		this.LibraryChanged?.Invoke();
 	}
@@ -337,6 +348,7 @@ public class LibraryViewModel : ViewModelBase, IDisposable
 	{
 		_context.LibraryItems.RemoveRange(_context.LibraryItems);
 		_context.SaveChanges();
+		_rotationDecks.Clear();
 		Items.Clear();
 		SelectedItem = null;
 		ImportStatus = "Library cleared.";
@@ -357,6 +369,7 @@ public class LibraryViewModel : ViewModelBase, IDisposable
 		}
 		_context.LibraryItems.RemoveRange(selectedItems);
 		_context.SaveChanges();
+		_rotationDecks.Clear();
 		foreach (LibraryItem item in selectedItems)
 		{
 			Items.Remove(item);
@@ -366,39 +379,243 @@ public class LibraryViewModel : ViewModelBase, IDisposable
 		this.LibraryChanged?.Invoke();
 	}
 
-	public LibraryItem? GetRandomItem(params string[] preferredCategories)
+	public void MarkItemPlayed(LibraryItem? item)
 	{
-		IQueryable<LibraryItem> query = _context.LibraryItems.AsQueryable();
-		if (preferredCategories.Length != 0)
+		if (item == null)
+		{
+			return;
+		}
+		DateTime now = DateTime.UtcNow;
+		item.LastPlayedAtUtc = now;
+		item.PlayCount++;
+		if (item.Id > 0)
+		{
+			_recentPlayedItemIds.Enqueue(item.Id);
+			while (_recentPlayedItemIds.Count > 200)
+			{
+				_recentPlayedItemIds.Dequeue();
+			}
+		}
+		if (!string.IsNullOrWhiteSpace(item.Artist))
+		{
+			_recentArtists.Enqueue((item.Artist.Trim(), now));
+			while (_recentArtists.Count > 50)
+			{
+				_recentArtists.Dequeue();
+			}
+		}
+		if (!string.IsNullOrWhiteSpace(item.Title))
+		{
+			_recentTitles.Enqueue((item.Title.Trim(), now));
+			while (_recentTitles.Count > 50)
+			{
+				_recentTitles.Dequeue();
+			}
+		}
+		try
+		{
+			LibraryItem? dbItem = _context.LibraryItems.Find(item.Id);
+			if (dbItem != null)
+			{
+				dbItem.LastPlayedAtUtc = item.LastPlayedAtUtc;
+				dbItem.PlayCount = item.PlayCount;
+				_context.SaveChanges();
+			}
+		}
+		catch
+		{
+		}
+	}
+
+	public LibraryItem? GetNextTrack(
+		IEnumerable<string>? preferredCategories = null,
+		string? tag = null,
+		IEnumerable<LibraryItem>? currentlyQueued = null)
+	{
+		List<LibraryItem> candidates;
+		string poolKey;
+
+		if (!string.IsNullOrWhiteSpace(tag))
+		{
+			string normalizedTag = tag.Trim().ToLowerInvariant();
+			poolKey = "tag:" + normalizedTag;
+			candidates = Items.Where((LibraryItem item) =>
+				IsMusicCandidate(item) &&
+				item.Tags.Split(new char[3] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+					.Any((string itemTag) => string.Equals(itemTag, normalizedTag, StringComparison.OrdinalIgnoreCase))
+			).ToList();
+
+			if (candidates.Count == 0)
+			{
+				poolKey = "cat:music_fallback";
+				candidates = Items.Where(IsMusicCandidate).ToList();
+			}
+		}
+		else if (preferredCategories != null && preferredCategories.Any())
 		{
 			string[] normalized = (from category in preferredCategories
 				where !string.IsNullOrWhiteSpace(category)
 				select category.ToLowerInvariant()).ToArray();
-			query = query.Where((LibraryItem item) => Enumerable.Contains(normalized, item.Category.ToLower()));
+			poolKey = "cat:" + string.Join(",", normalized.OrderBy(c => c));
+			candidates = Items.Where((LibraryItem item) =>
+				Enumerable.Contains(normalized, (item.Category ?? string.Empty).ToLowerInvariant())
+			).ToList();
 		}
-		List<LibraryItem> candidates = query.ToList();
-		if (candidates.Count != 0)
+		else
 		{
-			return candidates[_random.Next(candidates.Count)];
+			poolKey = "cat:music_default";
+			candidates = Items.Where(IsMusicCandidate).ToList();
 		}
-		return null;
+
+		if (candidates.Count == 0)
+		{
+			return null;
+		}
+
+		List<LibraryItem> availableCandidates = candidates.Where((LibraryItem item) => System.IO.File.Exists(item.FilePath)).ToList();
+		if (availableCandidates.Count > 0)
+		{
+			candidates = availableCandidates;
+		}
+
+		if (candidates.Count == 1)
+		{
+			return candidates[0];
+		}
+
+		HashSet<int> queuedIds = new HashSet<int>();
+		HashSet<string> queuedArtists = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		HashSet<string> queuedTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+		if (currentlyQueued != null)
+		{
+			foreach (LibraryItem queued in currentlyQueued)
+			{
+				if (queued != null)
+				{
+					if (queued.Id > 0) queuedIds.Add(queued.Id);
+					if (!string.IsNullOrWhiteSpace(queued.Artist)) queuedArtists.Add(queued.Artist.Trim());
+					if (!string.IsNullOrWhiteSpace(queued.Title)) queuedTitles.Add(queued.Title.Trim());
+				}
+			}
+		}
+
+		DateTime now = DateTime.UtcNow;
+		int poolCount = candidates.Count;
+		int trackSeparationCount = Math.Max(1, (int)(poolCount * 0.75));
+		int configuredTrackHours = (_settings != null && _settings.AutoDjTrackSeparationHours > 0) ? _settings.AutoDjTrackSeparationHours : 2;
+		TimeSpan trackSeparationTime = TimeSpan.FromHours(configuredTrackHours);
+		int configuredArtistMin = (_settings != null && _settings.AutoDjArtistSeparationMinutes >= 0) ? _settings.AutoDjArtistSeparationMinutes : 45;
+		TimeSpan artistSeparationTime = TimeSpan.FromMinutes(configuredArtistMin);
+
+		int distinctArtists = candidates.Select(c => c.Artist).Where(a => !string.IsNullOrWhiteSpace(a)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+		bool enforceArtistSeparation = configuredArtistMin > 0 && distinctArtists > 2;
+
+		if (!_rotationDecks.TryGetValue(poolKey, out List<int>? deck) || deck == null)
+		{
+			deck = new List<int>();
+			_rotationDecks[poolKey] = deck;
+		}
+
+		HashSet<int> candidateIdSet = new HashSet<int>(candidates.Select(c => c.Id));
+		deck.RemoveAll(id => !candidateIdSet.Contains(id));
+
+		if (deck.Count == 0)
+		{
+			deck.AddRange(candidates.Select(c => c.Id));
+			ShuffleList(deck);
+		}
+
+		Dictionary<int, LibraryItem> candidateMap = candidates.ToDictionary(c => c.Id, c => c);
+
+		// Attempt 1: Strict track + artist + title separation from shuffled deck
+		for (int i = 0; i < deck.Count; i++)
+		{
+			int candidateId = deck[i];
+			if (!candidateMap.TryGetValue(candidateId, out LibraryItem? item))
+			{
+				continue;
+			}
+
+			if (queuedIds.Contains(item.Id))
+			{
+				continue;
+			}
+
+			if (queuedTitles.Contains(item.Title.Trim()))
+			{
+				continue;
+			}
+
+			if (enforceArtistSeparation && !string.IsNullOrWhiteSpace(item.Artist) && queuedArtists.Contains(item.Artist.Trim()))
+			{
+				continue;
+			}
+
+			if (IsTrackRecentlyPlayed(item, trackSeparationCount, trackSeparationTime, now))
+			{
+				continue;
+			}
+
+			if (enforceArtistSeparation && IsArtistRecentlyPlayed(item.Artist, artistSeparationTime, now))
+			{
+				continue;
+			}
+
+			deck.RemoveAt(i);
+			return item;
+		}
+
+		// Attempt 2: Relax artist separation
+		for (int i = 0; i < deck.Count; i++)
+		{
+			int candidateId = deck[i];
+			if (!candidateMap.TryGetValue(candidateId, out LibraryItem? item))
+			{
+				continue;
+			}
+
+			if (queuedIds.Contains(item.Id) || queuedTitles.Contains(item.Title.Trim()))
+			{
+				continue;
+			}
+
+			if (IsTrackRecentlyPlayed(item, Math.Max(1, trackSeparationCount / 2), TimeSpan.FromMinutes(trackSeparationTime.TotalMinutes / 2), now))
+			{
+				continue;
+			}
+
+			deck.RemoveAt(i);
+			return item;
+		}
+
+		// Attempt 3: Exhaustion reset - pick the least-recently-played candidate not currently in the queue
+		deck.Clear();
+		deck.AddRange(candidates.Select(c => c.Id));
+		ShuffleList(deck);
+
+		LibraryItem? fallback = candidates
+			.Where(c => !queuedIds.Contains(c.Id))
+			.OrderBy(c => c.LastPlayedAtUtc ?? DateTime.MinValue)
+			.ThenBy(c => c.PlayCount)
+			.FirstOrDefault() ?? candidates.FirstOrDefault();
+
+		if (fallback != null)
+		{
+			deck.Remove(fallback.Id);
+		}
+
+		return fallback;
+	}
+
+	public LibraryItem? GetRandomItem(params string[] preferredCategories)
+	{
+		return GetNextTrack(preferredCategories);
 	}
 
 	public LibraryItem? GetRandomMusicByTag(string tag)
 	{
-		if (string.IsNullOrWhiteSpace(tag))
-		{
-			return GetRandomItem("Music", "Song", "Uncategorized");
-		}
-		string normalizedTag = tag.Trim().ToLowerInvariant();
-		List<LibraryItem> candidates = (from item in _context.LibraryItems.AsEnumerable()
-			where IsMusicCandidate(item) && item.Tags.Split(new char[3] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Any((string itemTag) => string.Equals(itemTag, normalizedTag, StringComparison.OrdinalIgnoreCase))
-			select item).ToList();
-		if (candidates.Count != 0)
-		{
-			return candidates[_random.Next(candidates.Count)];
-		}
-		return null;
+		return GetNextTrack(null, tag);
 	}
 
 	public LibraryItem? GetRandomSweeper(string folderPath, TimeSpan minimumDuration, TimeSpan maximumDuration)
@@ -1119,6 +1336,50 @@ public class LibraryViewModel : ViewModelBase, IDisposable
 			{
 				recentHistory.Dequeue();
 			}
+		}
+	}
+
+	private bool IsTrackRecentlyPlayed(LibraryItem item, int maxRecentCount, TimeSpan minTime, DateTime now)
+	{
+		if (_recentPlayedItemIds.Reverse().Take(maxRecentCount).Contains(item.Id))
+		{
+			return true;
+		}
+		if (item.LastPlayedAtUtc.HasValue && (now - item.LastPlayedAtUtc.Value) < minTime)
+		{
+			return true;
+		}
+		if (!string.IsNullOrWhiteSpace(item.Title))
+		{
+			string title = item.Title.Trim();
+			if (_recentTitles.Any(t => string.Equals(t.Title, title, StringComparison.OrdinalIgnoreCase) && (now - t.PlayedAtUtc) < minTime))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private bool IsArtistRecentlyPlayed(string? artist, TimeSpan minTime, DateTime now)
+	{
+		if (string.IsNullOrWhiteSpace(artist))
+		{
+			return false;
+		}
+		string cleanArtist = artist.Trim();
+		return _recentArtists.Any(a => string.Equals(a.Artist, cleanArtist, StringComparison.OrdinalIgnoreCase) && (now - a.PlayedAtUtc) < minTime);
+	}
+
+	private void ShuffleList<T>(IList<T> list)
+	{
+		int n = list.Count;
+		while (n > 1)
+		{
+			n--;
+			int k = _random.Next(n + 1);
+			T value = list[k];
+			list[k] = list[n];
+			list[n] = value;
 		}
 	}
 

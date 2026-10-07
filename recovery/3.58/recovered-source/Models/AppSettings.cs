@@ -52,13 +52,33 @@ public class AppSettings
 
 	public string AutoDjHourlyTagRules { get; set; } = string.Empty;
 
+	public int AutoDjArtistSeparationMinutes { get; set; } = 45;
+
+	public int AutoDjTrackSeparationHours { get; set; } = 2;
+
+	public int AutoDjCommercialIntervalSongs { get; set; } = 6;
+
+	public bool SilenceWatchdogEnabled { get; set; } = true;
+
+	public int SilenceWatchdogTimeoutSeconds { get; set; } = 6;
+
+	public bool TopOfHourSyncEnabled { get; set; } = true;
+
+	public int TopOfHourTargetMinute { get; set; }
+
+	public bool NowPlayingFileExportEnabled { get; set; } = true;
+
+	public string NowPlayingFilePath { get; set; } = string.Empty;
+
+	public string NowPlayingFormat { get; set; } = "{artist} - {title}";
+
 	public int OutputDeviceNumber { get; set; } = -1;
 
 	public int InputDeviceNumber { get; set; } = -1;
 
-	public bool AudioNormalizationEnabled { get; set; }
+	public bool AudioNormalizationEnabled { get; set; } = true;
 
-	public double NormalizationTargetDb { get; set; } = -3.0;
+	public double NormalizationTargetDb { get; set; } = -14.0;
 
 	public double NormalizationMaxGainDb { get; set; } = 9.0;
 

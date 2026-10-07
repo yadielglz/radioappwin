@@ -158,6 +158,9 @@ public class DeckViewModel : ViewModelBase
 		private set
 		{
 			SetProperty(ref _position, value, "Position");
+			OnPropertyChanged("ElapsedFormatted");
+			OnPropertyChanged("RemainingFormatted");
+			OnPropertyChanged("IsEndingSoon");
 		}
 	}
 
@@ -170,8 +173,30 @@ public class DeckViewModel : ViewModelBase
 		private set
 		{
 			SetProperty(ref _duration, value, "Duration");
+			OnPropertyChanged("TotalDurationFormatted");
+			OnPropertyChanged("RemainingFormatted");
+			OnPropertyChanged("IsEndingSoon");
 		}
 	}
+
+	public string ElapsedFormatted => Position.TotalHours >= 1.0 ? Position.ToString("h\\:mm\\:ss") : Position.ToString("m\\:ss");
+
+	public string RemainingFormatted
+	{
+		get
+		{
+			if (Duration <= TimeSpan.Zero || Duration <= Position)
+			{
+				return "-0:00";
+			}
+			TimeSpan rem = Duration - Position;
+			return "-" + (rem.TotalHours >= 1.0 ? rem.ToString("h\\:mm\\:ss") : rem.ToString("m\\:ss"));
+		}
+	}
+
+	public string TotalDurationFormatted => Duration.TotalHours >= 1.0 ? Duration.ToString("h\\:mm\\:ss") : Duration.ToString("m\\:ss");
+
+	public bool IsEndingSoon => IsPlaying && Duration > TimeSpan.Zero && (Duration - Position).TotalSeconds <= 15.0;
 
 	public bool IsTrackReady
 	{
@@ -207,6 +232,10 @@ public class DeckViewModel : ViewModelBase
 
 	public ICommand StopCommand { get; }
 
+	public ICommand CueCommand { get; }
+
+	public ICommand EjectCommand { get; }
+
 	public ICommand NormalTempoCommand { get; }
 
 	public ICommand FastTempoCommand { get; }
@@ -231,6 +260,23 @@ public class DeckViewModel : ViewModelBase
 		{
 			Stop();
 		}, (object? _) => _playbackState != DeckPlaybackState.Stopped);
+		CueCommand = new RelayCommand(delegate
+		{
+			_playbackService.Seek(DeckId, TimeSpan.Zero);
+			Pause();
+		}, (object? _) => IsTrackReady);
+		EjectCommand = new RelayCommand(delegate
+		{
+			Stop();
+			TrackPath = string.Empty;
+			TrackTitle = "No track loaded";
+			TrackArtist = string.Empty;
+			TrackAlbum = string.Empty;
+			IsTrackReady = false;
+			Position = TimeSpan.Zero;
+			Duration = TimeSpan.Zero;
+			PlaybackProgress = 0.0;
+		}, (object? _) => IsTrackReady);
 		NormalTempoCommand = new RelayCommand(delegate
 		{
 			SetTempo(1.0);

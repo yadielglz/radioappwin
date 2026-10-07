@@ -26,6 +26,61 @@ public class LibraryItem
 
 	public DateTime? SourceModifiedAtUtc { get; set; }
 
+	public DateTime? LastPlayedAtUtc { get; set; }
+
+	public int PlayCount { get; set; }
+
+	public int? StartCueMs { get; set; }
+
+	public int? IntroCueMs { get; set; }
+
+	public int? OutroCueMs { get; set; }
+
+	public int? EndCueMs { get; set; }
+
+	[NotMapped]
+	public TimeSpan? IntroCue => IntroCueMs.HasValue ? TimeSpan.FromMilliseconds(IntroCueMs.Value) : null;
+
+	[NotMapped]
+	public TimeSpan? OutroCue => OutroCueMs.HasValue ? TimeSpan.FromMilliseconds(OutroCueMs.Value) : null;
+
+	[NotMapped]
+	public string IntroCueText
+	{
+		get => IntroCueMs.HasValue ? (IntroCueMs.Value / 1000.0).ToString("0.0") + "s" : string.Empty;
+		set
+		{
+			if (double.TryParse(value?.TrimEnd('s', 'S'), out double seconds) && seconds >= 0)
+			{
+				IntroCueMs = (int)(seconds * 1000);
+			}
+			else
+			{
+				IntroCueMs = null;
+			}
+		}
+	}
+
+	[NotMapped]
+	public string OutroCueText
+	{
+		get => OutroCueMs.HasValue ? (OutroCueMs.Value / 1000.0).ToString("0.0") + "s" : string.Empty;
+		set
+		{
+			if (double.TryParse(value?.TrimEnd('s', 'S'), out double seconds) && seconds >= 0)
+			{
+				OutroCueMs = (int)(seconds * 1000);
+			}
+			else
+			{
+				OutroCueMs = null;
+			}
+		}
+	}
+
+	[NotMapped]
+	public string LastPlayedText => LastPlayedAtUtc.HasValue ? LastPlayedAtUtc.Value.ToLocalTime().ToString("g") : "Never";
+
 	[NotMapped]
 	public string DurationText => Duration.ToString(Duration.TotalHours >= 1.0 ? "h\\:mm\\:ss" : "m\\:ss");
 

@@ -909,15 +909,27 @@ public class AudioPlaybackService : IDisposable
 			float peak = 0.0001f;
 			for (int i = offset; i < offset + read; i++)
 			{
-				peak = Math.Max(peak, Math.Abs(buffer[i]));
+				float abs = Math.Abs(buffer[i]);
+				if (abs > peak) peak = abs;
 			}
 			float desiredGain = Math.Clamp(_targetPeak / peak, 0.1f, _maxGain);
-			float smoothing = ((desiredGain < _currentGain) ? 0.3f : 0.04f);
+			float smoothing = ((desiredGain < _currentGain) ? 0.25f : 0.02f);
 			_currentGain += (desiredGain - _currentGain) * smoothing;
 			for (int j = offset; j < offset + read; j++)
 			{
 				float sample = buffer[j] * _currentGain;
-				buffer[j] = (_limiterEnabled ? Math.Clamp(sample, -1f, 1f) : sample);
+				if (_limiterEnabled)
+				{
+					if (sample > 0.85f)
+					{
+						sample = 0.85f + 0.15f * MathF.Tanh((sample - 0.85f) / 0.15f);
+					}
+					else if (sample < -0.85f)
+					{
+						sample = -0.85f + 0.15f * MathF.Tanh((sample + 0.85f) / 0.15f);
+					}
+				}
+				buffer[j] = Math.Clamp(sample, -1f, 1f);
 			}
 			return read;
 		}

@@ -1,0 +1,16 @@
+# Build and publish outputs
+bin/
+obj/
+publish-*/
+*.zip
+
+# Visual Studio / IDE
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Logs & temp
+app-error.log
+*.log

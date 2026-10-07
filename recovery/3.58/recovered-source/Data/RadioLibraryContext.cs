@@ -17,6 +17,12 @@ public class RadioLibraryContext : DbContext
 	{
 		Database.EnsureCreated();
 		EnsureLibraryColumn("SourceModifiedAtUtc", "TEXT NULL");
+		EnsureLibraryColumn("LastPlayedAtUtc", "TEXT NULL");
+		EnsureLibraryColumn("PlayCount", "INTEGER NOT NULL DEFAULT 0");
+		EnsureLibraryColumn("StartCueMs", "INTEGER NULL");
+		EnsureLibraryColumn("IntroCueMs", "INTEGER NULL");
+		EnsureLibraryColumn("OutroCueMs", "INTEGER NULL");
+		EnsureLibraryColumn("EndCueMs", "INTEGER NULL");
 		EnsureScheduleColumn("RepeatMode", "INTEGER NOT NULL DEFAULT 0");
 		EnsureScheduleColumn("ToleranceBeforeMinutes", "INTEGER NOT NULL DEFAULT 0");
 		EnsureScheduleColumn("ToleranceAfterMinutes", "INTEGER NOT NULL DEFAULT 2");

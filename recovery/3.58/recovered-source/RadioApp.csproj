@@ -11,7 +11,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <ApplicationIcon>Assets\RadioAppIcon.ico</ApplicationIcon>
-    <Version>4.0.6</Version>
+    <Version>26.1007.0900</Version>
+    <AssemblyVersion>26.1007.0900.0</AssemblyVersion>
+    <FileVersion>26.1007.0900.0</FileVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(TargetFramework)' == 'net6.0-windows7.0'">
@@ -24,13 +26,6 @@
   <ItemGroup>
     <Resource Include="Assets\RadioAppIcon.ico" />
     <Resource Include="Assets\RadioAppLogo.png" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="..\..\web\**\*.*">
-      <Link>web\%(RecursiveDir)%(FileName)%(Extension)</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
   </ItemGroup>
 
   <ItemGroup>

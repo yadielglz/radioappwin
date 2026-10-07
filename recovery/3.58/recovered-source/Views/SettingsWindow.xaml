@@ -1,84 +1,97 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Window x:Class="RadioApp.Views.SettingsWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="clr-namespace:RadioApp.Models" xmlns:d="http://schemas.microsoft.com/expression/blend/2008" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" Title="Settings" Height="700" Width="860" MinHeight="600" MinWidth="760" Icon="../Assets/RadioAppIcon.ico" ResizeMode="CanResizeWithGrip" xmlns:views="clr-namespace:RadioApp.Views">
-  <FrameworkElement.Resources>
-    <ResourceDictionary>
-      <Style x:Key="SectionTitleStyle" TargetType="{x:Type TextBlock}">
-        <Setter Property="FontSize" Value="18" />
-        <Setter Property="FontWeight" Value="SemiBold" />
-        <Setter Property="Margin" Value="0 0 0 12" />
-      </Style>
-      <Style x:Key="LabelStyle" TargetType="{x:Type TextBlock}">
-        <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
-        <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="Margin" Value="0 0 8 0" />
-      </Style>
-    </ResourceDictionary>
-  </FrameworkElement.Resources>
+<Window x:Class="RadioApp.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:RadioApp.Models"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        Title="Studio Settings — RadioApp"
+        Height="740" Width="880" MinHeight="620" MinWidth="780"
+        Icon="../Assets/RadioAppIcon.ico"
+        ResizeMode="CanResizeWithGrip"
+        Background="{StaticResource AppBackgroundBrush}"
+        xmlns:views="clr-namespace:RadioApp.Views">
   <Grid Margin="18">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto" />
       <RowDefinition Height="*" />
     </Grid.RowDefinitions>
-    <DockPanel Margin="0 0 0 14">
-      <Button DockPanel.Dock="Right" Content="Refresh Devices" Style="{StaticResource SecondaryButtonStyle}" Width="126" Command="{Binding RefreshAudioDevicesCommand}" />
-      <StackPanel>
-        <TextBlock Text="Settings" FontSize="24" FontWeight="Bold" />
-        <TextBlock Text="Startup, library sync, audio devices, and streaming" Foreground="{StaticResource MutedTextBrush}" Margin="0 2 0 0" />
-      </StackPanel>
-    </DockPanel>
-    <TabControl Grid.Row="1">
+
+    <!-- Header HUD -->
+    <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}"
+            BorderThickness="1" CornerRadius="10" Padding="14 10" Margin="0 0 0 14">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="🔄 Refresh Devices" Style="{StaticResource SecondaryButtonStyle}" Width="140" Command="{Binding RefreshAudioDevicesCommand}" />
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Text="STUDIO &amp; ENGINE PREFERENCES" FontSize="18" FontWeight="ExtraBold" Foreground="{StaticResource PrimaryGlowBrush}" />
+          <TextBlock Text="Audio I/O routing, streaming encoders, automation rules, and DSP normalizer" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0 2 0 0" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <TabControl Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}">
+      <!-- General Tab -->
       <TabItem Header="General">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <StackPanel Margin="14">
-            <GroupBox Header="Startup">
+          <StackPanel Margin="16">
+            <GroupBox Header="Startup Configuration">
               <StackPanel Margin="4">
-                <CheckBox Content="Connect and publish the stream automatically when the app starts" Margin="0 0 0 10" IsChecked="{Binding AutoConnectStreamOnStartup, Mode=TwoWay}" />
-                <CheckBox Content="Start minimized to tray" IsChecked="{Binding StartMinimizedToTray, Mode=TwoWay}" />
+                <CheckBox Content="Connect and publish the live stream automatically when RadioApp starts" Foreground="{StaticResource TextBrush}" Margin="0 0 0 12" IsChecked="{Binding AutoConnectStreamOnStartup, Mode=TwoWay}" />
+                <CheckBox Content="Start minimized to Windows notification tray" Foreground="{StaticResource TextBrush}" IsChecked="{Binding StartMinimizedToTray, Mode=TwoWay}" />
               </StackPanel>
             </GroupBox>
-            <GroupBox Header="Tray Behavior">
+
+            <GroupBox Header="Windows Tray Integration">
               <StackPanel Margin="4">
-                <CheckBox Content="Minimize to tray instead of leaving a taskbar window" Margin="0 0 0 10" IsChecked="{Binding MinimizeToTray, Mode=TwoWay}" />
-                <CheckBox Content="Close button sends the app to the tray until Exit is chosen" IsChecked="{Binding CloseToTray, Mode=TwoWay}" />
+                <CheckBox Content="Minimize to tray instead of leaving a taskbar window" Foreground="{StaticResource TextBrush}" Margin="0 0 0 12" IsChecked="{Binding MinimizeToTray, Mode=TwoWay}" />
+                <CheckBox Content="Close button sends RadioApp to the tray until Exit is selected" Foreground="{StaticResource TextBrush}" IsChecked="{Binding CloseToTray, Mode=TwoWay}" />
               </StackPanel>
             </GroupBox>
-            <Border Background="#F5F9FE" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
-              <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Use Exit from the File menu or the tray icon menu when you want to shut RadioApp down completely." />
+
+            <Border Background="{StaticResource PanelAltBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="8" Padding="12">
+              <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Text="Tip: Use Exit from the File menu or tray menu to shut down playout and streaming completely." />
             </Border>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
-      <TabItem Header="Library">
+
+      <!-- Library Tab -->
+      <TabItem Header="Library Sync">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <Grid Margin="14">
+          <Grid Margin="16">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="*" />
               <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <GroupBox Header="Background Refresh">
+
+            <GroupBox Header="Background Folder Watcher">
               <StackPanel Margin="4">
-                <CheckBox Content="Watch imported folders and refresh the library automatically" Margin="0 0 0 10" IsChecked="{Binding Library.BackgroundRefreshEnabled, Mode=TwoWay}" />
-                <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="{Binding Library.ImportStatus}" />
+                <CheckBox Content="Watch imported library folders and refresh tracks automatically" Foreground="{StaticResource TextBrush}" Margin="0 0 0 10" IsChecked="{Binding Library.BackgroundRefreshEnabled, Mode=TwoWay}" />
+                <TextBlock Foreground="{StaticResource PrimaryGlowBrush}" FontWeight="SemiBold" Text="{Binding Library.ImportStatus}" />
               </StackPanel>
             </GroupBox>
+
             <WrapPanel Grid.Row="1" Margin="0 0 0 12">
-              <Button Content="Add Folder" Width="110" Margin="0 0 8 8" Command="{Binding Library.AddWatchedFolderCommand}" />
-              <Button Content="Remove Folder" Width="120" Margin="0 0 8 8" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding Library.RemoveWatchedFolderCommand}" />
-              <Button Content="Rescan Now" Width="110" Margin="0 0 8 8" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding Library.RescanWatchedFoldersCommand}" />
+              <Button Content="➕ Add Folder" Style="{StaticResource PrimaryActionButtonStyle}" Width="110" Margin="0 0 8 8" Command="{Binding Library.AddWatchedFolderCommand}" />
+              <Button Content="🗑 Remove" Width="100" Margin="0 0 8 8" Style="{StaticResource DangerButtonStyle}" Command="{Binding Library.RemoveWatchedFolderCommand}" />
+              <Button Content="🔄 Rescan Now" Width="120" Margin="0 0 8 8" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding Library.RescanWatchedFoldersCommand}" />
             </WrapPanel>
-            <ListBox Grid.Row="2" MinHeight="180" ItemsSource="{Binding Library.WatchedFolders}" SelectedItem="{Binding Library.SelectedWatchedFolder, Mode=TwoWay}" />
-            <Border Grid.Row="3" Background="#F8FAFC" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10" Margin="0 12 0 0">
-              <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Watched folders are scanned for adds, removals, renames, and metadata edits. Categories and custom tags already stored in RadioApp stay intact." />
+
+            <ListBox Grid.Row="2" MinHeight="160" Background="{StaticResource PanelAltBrush}" Foreground="{StaticResource TextBrush}" BorderBrush="{StaticResource BorderBrushSoft}" ItemsSource="{Binding Library.WatchedFolders}" SelectedItem="{Binding Library.SelectedWatchedFolder, Mode=TwoWay}" />
+
+            <Border Grid.Row="3" Background="{StaticResource PanelAltBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0 14 0 0">
+              <TextBlock Foreground="{StaticResource MutedTextBrush}" FontSize="12" Text="Watched folders are monitored for file additions, deletions, renames, and tag updates. Stored categories and cues remain preserved." />
             </Border>
           </Grid>
         </ScrollViewer>
       </TabItem>
-      <TabItem Header="Automation">
+
+      <!-- Automation Tab -->
+      <TabItem Header="Automation &amp; Auto-DJ">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <StackPanel Margin="14">
-            <GroupBox Header="Auto DJ" Margin="0 0 0 12">
+          <StackPanel Margin="16">
+            <GroupBox Header="Auto DJ Rotation" Margin="0 0 0 14">
               <Grid Margin="4">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
@@ -89,18 +102,19 @@
                   <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Row="0" Grid.ColumnSpan="2">
-                  <CheckBox Content="Enable Auto DJ" Margin="0 0 0 10" IsChecked="{Binding AutoScheduleEnabled, Mode=TwoWay}" />
-                  <CheckBox Content="Fill the current hour" Margin="0 0 0 10" IsChecked="{Binding AutoDjFillCurrentHour, Mode=TwoWay}" />
-                  <CheckBox Content="Enable gapless handoff" IsChecked="{Binding GaplessPlaybackEnabled, Mode=TwoWay}" />
+                  <CheckBox Content="Enable continuous Auto DJ automation" Foreground="{StaticResource TextBrush}" Margin="0 0 0 10" IsChecked="{Binding AutoScheduleEnabled, Mode=TwoWay}" />
+                  <CheckBox Content="Auto-fill the current broadcast hour" Foreground="{StaticResource TextBrush}" Margin="0 0 0 10" IsChecked="{Binding AutoDjFillCurrentHour, Mode=TwoWay}" />
+                  <CheckBox Content="Enable gapless track segue handoff" Foreground="{StaticResource TextBrush}" IsChecked="{Binding GaplessPlaybackEnabled, Mode=TwoWay}" />
                 </StackPanel>
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Queue depth" Style="{StaticResource LabelStyle}" Margin="0 14 12 0" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Queue Depth:" Style="{StaticResource LabelStyle}" Margin="0 14 12 0" />
                 <WrapPanel Grid.Row="1" Grid.Column="1" Margin="0 10 0 0">
-                  <TextBox Width="58" Margin="0 0 8 0" Text="{Binding AutoDjQueueDepth, Mode=TwoWay}" />
-                  <TextBlock Text="items/minutes target" Style="{StaticResource LabelStyle}" />
+                  <TextBox Width="60" Margin="0 0 8 0" Text="{Binding AutoDjQueueDepth, Mode=TwoWay}" />
+                  <TextBlock Text="tracks queued in advance" Style="{StaticResource LabelStyle}" />
                 </WrapPanel>
               </Grid>
             </GroupBox>
-            <GroupBox Header="Jingle / Sweeper Injection" Margin="0 0 0 12">
+
+            <GroupBox Header="Jingle &amp; Sweeper Injection" Margin="0 0 0 14">
               <Grid Margin="4">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
@@ -108,26 +122,27 @@
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="160" />
+                  <ColumnDefinition Width="140" />
                   <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <WrapPanel Grid.Row="0" Grid.ColumnSpan="2" Margin="0 0 0 10">
-                  <CheckBox Content="Enabled" Margin="0 7 12 8" IsChecked="{Binding SweepersEnabled, Mode=TwoWay}" />
-                  <Button Content="Choose Folder" Width="118" Style="{StaticResource SecondaryButtonStyle}" Margin="0 0 8 8" Command="{Binding SelectSweeperFolderCommand}" />
+                  <CheckBox Content="Enable Sweeper Drops" Foreground="{StaticResource TextBrush}" Margin="0 7 14 8" IsChecked="{Binding SweepersEnabled, Mode=TwoWay}" />
+                  <Button Content="Browse Folder..." Width="130" Style="{StaticResource SecondaryButtonStyle}" Margin="0 0 8 8" Command="{Binding SelectSweeperFolderCommand}" />
                 </WrapPanel>
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Folder" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Sweeper Folder:" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
                 <TextBox Grid.Row="1" Grid.Column="1" IsReadOnly="True" Margin="0 0 0 10" Text="{Binding SweeperFolder, Mode=TwoWay}" />
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Frequency" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Injection Frequency:" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
                 <WrapPanel Grid.Row="2" Grid.Column="1">
                   <TextBlock Text="Every" Style="{StaticResource LabelStyle}" Margin="0 0 6 0" />
-                  <TextBox Width="42" Margin="0 0 6 0" Text="{Binding SweeperMinSongs, Mode=TwoWay}" />
+                  <TextBox Width="46" Margin="0 0 6 0" Text="{Binding SweeperMinSongs, Mode=TwoWay}" />
                   <TextBlock Text="to" Style="{StaticResource LabelStyle}" Margin="0 0 6 0" />
-                  <TextBox Width="42" Margin="0 0 6 0" Text="{Binding SweeperMaxSongs, Mode=TwoWay}" />
+                  <TextBox Width="46" Margin="0 0 6 0" Text="{Binding SweeperMaxSongs, Mode=TwoWay}" />
                   <TextBlock Text="songs" Style="{StaticResource LabelStyle}" />
                 </WrapPanel>
               </Grid>
             </GroupBox>
-            <GroupBox Header="Radio ID Injection" Margin="0 0 0 12">
+
+            <GroupBox Header="Station ID Injection" Margin="0 0 0 14">
               <Grid Margin="4">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
@@ -135,71 +150,130 @@
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="160" />
+                  <ColumnDefinition Width="140" />
                   <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
                 <WrapPanel Grid.Row="0" Grid.ColumnSpan="2" Margin="0 0 0 10">
-                  <CheckBox Content="Enabled" Margin="0 7 12 8" IsChecked="{Binding RadioIdsEnabled, Mode=TwoWay}" />
-                  <Button Content="Choose Folder" Width="118" Style="{StaticResource SecondaryButtonStyle}" Margin="0 0 8 8" Command="{Binding SelectRadioIdFolderCommand}" />
+                  <CheckBox Content="Enable Timed Station IDs" Foreground="{StaticResource TextBrush}" Margin="0 7 14 8" IsChecked="{Binding RadioIdsEnabled, Mode=TwoWay}" />
+                  <Button Content="Browse Folder..." Width="130" Style="{StaticResource SecondaryButtonStyle}" Margin="0 0 8 8" Command="{Binding SelectRadioIdFolderCommand}" />
                 </WrapPanel>
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Folder" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Station ID Folder:" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
                 <TextBox Grid.Row="1" Grid.Column="1" IsReadOnly="True" Margin="0 0 0 10" Text="{Binding RadioIdFolder, Mode=TwoWay}" />
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Timing" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Top-of-Hour Minute:" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
                 <WrapPanel Grid.Row="2" Grid.Column="1">
-                  <TextBlock Text="Minute" Style="{StaticResource LabelStyle}" Margin="0 0 6 0" />
-                  <TextBox Width="42" Margin="0 0 12 0" Text="{Binding RadioIdMinute, Mode=TwoWay}" />
+                  <TextBlock Text="Minute :" Style="{StaticResource LabelStyle}" Margin="0 0 6 0" />
+                  <TextBox Width="46" Margin="0 0 12 0" Text="{Binding RadioIdMinute, Mode=TwoWay}" />
                   <TextBlock Text="Tolerance -" Style="{StaticResource LabelStyle}" Margin="0 0 6 0" />
-                  <TextBox Width="42" Margin="0 0 6 0" Text="{Binding RadioIdToleranceBeforeMinutes, Mode=TwoWay}" />
+                  <TextBox Width="46" Margin="0 0 6 0" Text="{Binding RadioIdToleranceBeforeMinutes, Mode=TwoWay}" />
                   <TextBlock Text="+" Style="{StaticResource LabelStyle}" Margin="0 0 6 0" />
-                  <TextBox Width="42" Margin="0 0 6 0" Text="{Binding RadioIdToleranceAfterMinutes, Mode=TwoWay}" />
+                  <TextBox Width="46" Margin="0 0 6 0" Text="{Binding RadioIdToleranceAfterMinutes, Mode=TwoWay}" />
                   <TextBlock Text="min" Style="{StaticResource LabelStyle}" />
                 </WrapPanel>
               </Grid>
             </GroupBox>
-            <GroupBox Header="Tag Rotation Rules">
+
+            <GroupBox Header="Smart Rotation &amp; Repeat Prevention" Margin="0 0 0 14">
               <Grid Margin="4">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="180" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Artist Separation Window:" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
+                <WrapPanel Grid.Row="0" Grid.Column="1" Margin="0 0 0 10">
+                  <TextBox Width="56" Margin="0 0 6 0" Text="{Binding AutoDjArtistSeparationMinutes, Mode=TwoWay}" />
+                  <TextBlock Text="minutes between same artist plays (0 to disable)" Style="{StaticResource LabelStyle}" />
+                </WrapPanel>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Track Separation Window:" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
+                <WrapPanel Grid.Row="1" Grid.Column="1" Margin="0 0 0 10">
+                  <TextBox Width="56" Margin="0 0 6 0" Text="{Binding AutoDjTrackSeparationHours, Mode=TwoWay}" />
+                  <TextBlock Text="hours before same track repeat eligibility" Style="{StaticResource LabelStyle}" />
+                </WrapPanel>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Commercial Frequency:" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
+                <WrapPanel Grid.Row="2" Grid.Column="1">
+                  <TextBlock Text="Every" Style="{StaticResource LabelStyle}" Margin="0 0 6 0" />
+                  <TextBox Width="46" Margin="0 0 6 0" Text="{Binding AutoDjCommercialIntervalSongs, Mode=TwoWay}" />
+                  <TextBlock Text="music songs (0 to disable commercials)" Style="{StaticResource LabelStyle}" />
+                </WrapPanel>
+              </Grid>
+            </GroupBox>
+
+            <GroupBox Header="Dead-Air Watchdog &amp; Playout Failsafe" Margin="0 0 0 14">
+              <Grid Margin="4">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <TextBlock Text="Default tag" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
-                <TextBox Grid.Row="1" Margin="0 0 0 10" Text="{Binding AutoDjDefaultTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Grid.Row="2" Text="Hourly overrides, one per line: 18-19=live" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
-                <TextBox Grid.Row="3" AcceptsReturn="True" TextWrapping="Wrap" Height="120" VerticalScrollBarVisibility="Auto" Text="{Binding AutoDjHourlyTagRules, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="180" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <CheckBox Grid.Row="0" Grid.ColumnSpan="2" Content="Enable automatic dead-air watchdog (auto-skips stalled tracks)" Foreground="{StaticResource TextBrush}" Margin="0 0 0 10" IsChecked="{Binding SilenceWatchdogEnabled, Mode=TwoWay}" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Watchdog Stall Timeout:" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
+                <WrapPanel Grid.Row="1" Grid.Column="1">
+                  <TextBox Width="56" Margin="0 0 6 0" Text="{Binding SilenceWatchdogTimeoutSeconds, Mode=TwoWay}" />
+                  <TextBlock Text="seconds before emergency queue advance" Style="{StaticResource LabelStyle}" />
+                </WrapPanel>
+              </Grid>
+            </GroupBox>
+
+            <GroupBox Header="Local Now Playing Metadata Export" Margin="0 0 0 14">
+              <Grid Margin="4">
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="150" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <CheckBox Grid.Row="0" Grid.ColumnSpan="2" Content="Write current track info to local text file (for OBS, stream widgets, RDS)" Foreground="{StaticResource TextBrush}" Margin="0 0 0 10" IsChecked="{Binding NowPlayingFileExportEnabled, Mode=TwoWay}" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Target File Path:" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
+                <TextBox Grid.Row="1" Grid.Column="1" Margin="0 0 0 10" Text="{Binding NowPlayingFilePath, Mode=TwoWay}" ToolTip="Leave blank for default %APPDATA%\RadioApp\nowplaying.txt" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Template Format:" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
+                <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding NowPlayingFormat, Mode=TwoWay}" ToolTip="Supported tokens: {artist}, {title}, {album}, {category}, {duration}" />
               </Grid>
             </GroupBox>
           </StackPanel>
         </ScrollViewer>
       </TabItem>
-      <TabItem Header="Audio">
+
+      <!-- Audio Devices & DSP Tab -->
+      <TabItem Header="Audio &amp; DSP">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <Grid Margin="14">
+          <Grid Margin="16">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
-              <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <GroupBox Header="Devices" Margin="0 0 0 12">
+
+            <GroupBox Header="Audio Output / Input Devices" Margin="0 0 0 14">
               <Grid Margin="4">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="160" />
+                  <ColumnDefinition Width="150" />
                   <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Program output" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Playout Master Output:" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
                 <ComboBox Grid.Row="0" Grid.Column="1" DisplayMemberPath="DisplayName" SelectedValuePath="DeviceNumber" Margin="0 0 0 10" ItemsSource="{Binding OutputAudioDevices}" SelectedValue="{Binding SelectedOutputDeviceNumber, Mode=TwoWay}" />
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Recording input" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Recording / Mic Input:" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
                 <ComboBox Grid.Row="1" Grid.Column="1" DisplayMemberPath="DisplayName" SelectedValuePath="DeviceNumber" ItemsSource="{Binding InputAudioDevices}" SelectedValue="{Binding SelectedInputDeviceNumber, Mode=TwoWay}" />
               </Grid>
             </GroupBox>
-            <GroupBox Grid.Row="1" Header="Audio Normalization" Margin="0 0 0 12">
+
+            <GroupBox Grid.Row="1" Header="Loudness Normalization &amp; Peak Limiter" Margin="0 0 0 14">
               <Grid Margin="4">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
@@ -208,21 +282,25 @@
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="160" />
+                  <ColumnDefinition Width="150" />
                   <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="68" />
+                  <ColumnDefinition Width="70" />
                 </Grid.ColumnDefinitions>
-                <CheckBox Grid.Row="0" Grid.ColumnSpan="3" Content="Enable adaptive loudness normalization" Margin="0 0 0 12" IsChecked="{Binding AudioNormalizationEnabled, Mode=TwoWay}" />
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Target peak" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
+                <CheckBox Grid.Row="0" Grid.ColumnSpan="3" Content="Enable adaptive loudness normalization" Foreground="{StaticResource TextBrush}" Margin="0 0 0 12" IsChecked="{Binding AudioNormalizationEnabled, Mode=TwoWay}" />
+                
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Target Peak:" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
                 <Slider Grid.Row="1" Grid.Column="1" Minimum="-24" Maximum="0" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0 0 10 10" Value="{Binding NormalizationTargetDb, Mode=TwoWay}" />
-                <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource LabelStyle}" Margin="0 0 0 10" Text="{Binding NormalizationTargetDb, StringFormat={}{0:0} dB}" />
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Maximum gain" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource LabelStyle}" Foreground="{StaticResource PrimaryGlowBrush}" Text="{Binding NormalizationTargetDb, StringFormat={}{0:0} dB}" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Max Gain Boost:" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
                 <Slider Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="24" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0 0 10 10" Value="{Binding NormalizationMaxGainDb, Mode=TwoWay}" />
-                <TextBlock Grid.Row="2" Grid.Column="2" Style="{StaticResource LabelStyle}" Margin="0 0 0 10" Text="{Binding NormalizationMaxGainDb, StringFormat={}{0:0} dB}" />
-                <CheckBox Grid.Row="3" Grid.ColumnSpan="3" Content="Enable safety limiter" IsChecked="{Binding AudioLimiterEnabled, Mode=TwoWay}" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Style="{StaticResource LabelStyle}" Foreground="{StaticResource PrimaryGlowBrush}" Text="{Binding NormalizationMaxGainDb, StringFormat={}{0:0} dB}" />
+
+                <CheckBox Grid.Row="3" Grid.ColumnSpan="3" Content="Enable safety brickwall limiter (prevents distortion/clipping)" Foreground="{StaticResource TextBrush}" IsChecked="{Binding AudioLimiterEnabled, Mode=TwoWay}" />
               </Grid>
             </GroupBox>
-            <GroupBox Grid.Row="2" Header="Radio Segue" Margin="0 0 0 12">
+
+            <GroupBox Grid.Row="2" Header="Segue &amp; Gapless Playout" Margin="0 0 0 14">
               <Grid Margin="4">
                 <Grid.RowDefinitions>
                   <RowDefinition Height="Auto" />
@@ -230,106 +308,111 @@
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="160" />
+                  <ColumnDefinition Width="150" />
                   <ColumnDefinition Width="*" />
-                  <ColumnDefinition Width="78" />
+                  <ColumnDefinition Width="80" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="Trigger level" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Silence Threshold:" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
                 <Slider Grid.Row="0" Grid.Column="1" Minimum="-72" Maximum="-12" TickFrequency="3" IsSnapToTickEnabled="True" Margin="0 0 10 10" Value="{Binding GaplessSilenceThresholdDb, Mode=TwoWay}" />
-                <TextBlock Grid.Row="0" Grid.Column="2" Style="{StaticResource LabelStyle}" Margin="0 0 0 10" Text="{Binding GaplessSilenceThresholdDb, StringFormat={}{0:0} dB}" />
-                <TextBlock Grid.Row="1" Grid.Column="0" Text="Crossfade" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
+                <TextBlock Grid.Row="0" Grid.Column="2" Style="{StaticResource LabelStyle}" Foreground="{StaticResource PrimaryGlowBrush}" Text="{Binding GaplessSilenceThresholdDb, StringFormat={}{0:0} dB}" />
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Crossfade Time:" Style="{StaticResource LabelStyle}" Margin="0 0 12 10" />
                 <Slider Grid.Row="1" Grid.Column="1" Minimum="100" Maximum="3000" TickFrequency="50" IsSnapToTickEnabled="True" Margin="0 0 10 10" Value="{Binding GaplessSilenceHoldMilliseconds, Mode=TwoWay}" />
-                <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource LabelStyle}" Margin="0 0 0 10" Text="{Binding GaplessSilenceHoldMilliseconds, StringFormat={}{0} ms}" />
-                <TextBlock Grid.Row="2" Grid.Column="0" Text="Scan window" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
+                <TextBlock Grid.Row="1" Grid.Column="2" Style="{StaticResource LabelStyle}" Foreground="{StaticResource PrimaryGlowBrush}" Text="{Binding GaplessSilenceHoldMilliseconds, StringFormat={}{0} ms}" />
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Scan Window:" Style="{StaticResource LabelStyle}" Margin="0 0 12 0" />
                 <Slider Grid.Row="2" Grid.Column="1" Minimum="3" Maximum="60" TickFrequency="1" IsSnapToTickEnabled="True" Margin="0 0 10 0" Value="{Binding GaplessScanWindowSeconds, Mode=TwoWay}" />
-                <TextBlock Grid.Row="2" Grid.Column="2" Style="{StaticResource LabelStyle}" Text="{Binding GaplessScanWindowSeconds, StringFormat={}{0:0} sec}" />
+                <TextBlock Grid.Row="2" Grid.Column="2" Style="{StaticResource LabelStyle}" Foreground="{StaticResource PrimaryGlowBrush}" Text="{Binding GaplessScanWindowSeconds, StringFormat={}{0:0} sec}" />
               </Grid>
             </GroupBox>
-            <Border Grid.Row="3" Background="#F5F9FE" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="4" Padding="10">
-              <TextBlock Foreground="{StaticResource MutedTextBrush}" Text="Device changes apply the next time a track is loaded. Level-triggered gapless does not apply to station IDs; they play to completion." />
-            </Border>
           </Grid>
         </ScrollViewer>
       </TabItem>
-      <TabItem Header="Streaming">
+
+      <!-- Streaming Encoder Tab -->
+      <TabItem Header="Stream Publishing">
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-          <Grid Margin="14">
+          <Grid Margin="16">
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
-              <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBlock Text="Stream Publishing" Style="{StaticResource SectionTitleStyle}" />
-            <UniformGrid Grid.Row="1" Columns="3" Margin="0 0 0 12">
+
+            <UniformGrid Grid.Row="0" Columns="3" Margin="0 0 0 14">
               <StackPanel Margin="0 0 10 0">
-                <TextBlock Text="Server Type" Style="{StaticResource LabelStyle}" />
+                <TextBlock Text="Server Protocol:" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
                 <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding StreamConfig.ServerType, Mode=TwoWay}">
                   <ComboBoxItem Content="SHOUTcast" Tag="{x:Static local:StreamServerType.Shoutcast}" />
                   <ComboBoxItem Content="Icecast" Tag="{x:Static local:StreamServerType.Icecast}" />
                 </ComboBox>
               </StackPanel>
               <StackPanel Margin="0 0 10 0">
-                <TextBlock Text="Server" Style="{StaticResource LabelStyle}" />
+                <TextBlock Text="Host Address:" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
                 <TextBox Text="{Binding StreamConfig.Host, Mode=TwoWay}" />
               </StackPanel>
               <StackPanel>
-                <TextBlock Text="Port" Style="{StaticResource LabelStyle}" />
+                <TextBlock Text="Port Number:" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
                 <TextBox Text="{Binding StreamConfig.Port, Mode=TwoWay}" />
               </StackPanel>
             </UniformGrid>
-            <UniformGrid Grid.Row="2" Columns="3" Margin="0 0 0 14">
+
+            <UniformGrid Grid.Row="1" Columns="3" Margin="0 0 0 14">
               <StackPanel Margin="0 0 10 0">
-                <TextBlock Text="Icecast Mount" Style="{StaticResource LabelStyle}" />
+                <TextBlock Text="Mount Point (Icecast):" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
                 <TextBox Text="{Binding StreamConfig.Mount, Mode=TwoWay}" />
               </StackPanel>
               <StackPanel Margin="0 0 10 0">
-                <TextBlock Text="User" Style="{StaticResource LabelStyle}" />
+                <TextBlock Text="Username:" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
                 <TextBox Text="{Binding StreamConfig.Username, Mode=TwoWay}" />
               </StackPanel>
               <StackPanel>
-                <TextBlock Text="Password / Stream Password" Style="{StaticResource LabelStyle}" />
+                <TextBlock Text="Source Password:" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
                 <TextBox Text="{Binding StreamConfig.Password, Mode=TwoWay}" />
               </StackPanel>
             </UniformGrid>
-            <UniformGrid Grid.Row="3" Columns="3" Margin="0 0 0 14">
+
+            <UniformGrid Grid.Row="2" Columns="3" Margin="0 0 0 16">
               <StackPanel Margin="0 0 10 0">
-                <TextBlock Text="Bitrate" Style="{StaticResource LabelStyle}" />
+                <TextBlock Text="MP3 Bitrate (kbps):" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
                 <TextBox Text="{Binding StreamConfig.Bitrate, Mode=TwoWay}" />
               </StackPanel>
               <StackPanel>
-                <TextBlock Text="SHOUTcast Stream ID (0 for v1)" Style="{StaticResource LabelStyle}" />
+                <TextBlock Text="SHOUTcast Stream ID:" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
                 <TextBox Text="{Binding StreamConfig.ShoutcastStreamId, Mode=TwoWay}" />
               </StackPanel>
             </UniformGrid>
-            <WrapPanel Grid.Row="4" Margin="0 0 0 12">
-              <Button Content="Connect" Width="105" Margin="0 0 8 8" Command="{Binding ConnectStreamCommand}" />
-              <Button Content="Publish Program" Width="150" Margin="0 0 8 8" Command="{Binding StreamProgramCommand}" />
-              <Button Content="Disconnect" Width="110" Margin="0 0 8 8" Command="{Binding DisconnectStreamCommand}" />
-              <TextBlock Text="Saved automatically" Style="{StaticResource LabelStyle}" Margin="8 7 0 8" />
+
+            <WrapPanel Grid.Row="3" Margin="0 0 0 14">
+              <Button Content="⚡ Connect Now" Style="{StaticResource LiveActionButtonStyle}" Width="120" Margin="0 0 8 8" Command="{Binding ConnectStreamCommand}" />
+              <Button Content="Broadcast Program" Style="{StaticResource PrimaryActionButtonStyle}" Width="150" Margin="0 0 8 8" Command="{Binding StreamProgramCommand}" />
+              <Button Content="Disconnect" Style="{StaticResource DangerButtonStyle}" Width="110" Margin="0 0 8 8" Command="{Binding DisconnectStreamCommand}" />
             </WrapPanel>
-            <Border Grid.Row="5" Background="#F8FAFC" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="6" Padding="10" VerticalAlignment="Top">
+
+            <Border Grid.Row="4" Background="{StaticResource PanelAltBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="8" Padding="14">
               <StackPanel>
-                <TextBlock Text="Status" Foreground="{StaticResource MutedTextBrush}" FontWeight="SemiBold" Margin="0 0 0 4" />
-                <TextBlock Text="{Binding StreamStatus}" />
-                <TextBlock Foreground="{StaticResource MutedTextBrush}" Margin="0 8 0 0" Text="{Binding StreamEndpointText}" />
+                <TextBlock Text="Stream Diagnostics" Foreground="{StaticResource PrimaryGlowBrush}" FontWeight="Bold" Margin="0 0 0 4" />
+                <TextBlock Text="{Binding StreamStatus}" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
+                <TextBlock Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0 6 0 0" Text="{Binding StreamEndpointText}" />
               </StackPanel>
             </Border>
           </Grid>
         </ScrollViewer>
       </TabItem>
+
+      <!-- Maintenance Tab -->
       <TabItem Header="Maintenance">
-        <Grid Margin="14">
+        <Grid Margin="16">
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
           </Grid.RowDefinitions>
-          <TextBlock Text="App Maintenance" Style="{StaticResource SectionTitleStyle}" />
-          <WrapPanel Grid.Row="1" Margin="0 0 0 12">
-            <Button Content="Clear Library" Width="120" Margin="0 0 8 8" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding ClearLibraryCommand}" />
-            <Button Content="Reset App" Width="120" Margin="0 0 8 8" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding ResetAppCommand}" />
+          <TextBlock Text="Database &amp; App Reset" Style="{StaticResource SectionTitleStyle}" />
+          <WrapPanel Grid.Row="1" Margin="0 14 0 0">
+            <Button Content="Clear Library DB" Width="140" Margin="0 0 8 8" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding ClearLibraryCommand}" />
+            <Button Content="Reset All Settings" Width="140" Margin="0 0 8 8" Style="{StaticResource DangerButtonStyle}" Command="{Binding ResetAppCommand}" />
           </WrapPanel>
         </Grid>
       </TabItem>

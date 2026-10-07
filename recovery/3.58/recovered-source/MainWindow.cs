@@ -95,8 +95,8 @@ public partial class MainWindow : Window, IComponentConnector
 
 	private void About_Click(object sender, RoutedEventArgs e)
 	{
-		string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "4.0.6";
-		System.Windows.MessageBox.Show(this, "RadioApp\nVersion " + version + "\n\nCopyright 2024 Glz Technical Services | Glz Tech\nLocal playout, scheduling, and optional Icecast publishing.", "About RadioApp", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+		string version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "26.1007.0900";
+		System.Windows.MessageBox.Show(this, "RadioApp Studio\nVersion " + version + "\n\nBroadcast automation, playout console, scheduling, and live streaming engine.\nCopyright 2026 Glz Technical Services | Glz Tech", "About RadioApp", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 	}
 
 	private void Exit_Click(object sender, RoutedEventArgs e)
