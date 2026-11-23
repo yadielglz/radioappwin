@@ -642,7 +642,7 @@
 
                   <TextBlock Text="{Binding UpdateStatusText}" FontSize="12" Foreground="{StaticResource PrimaryGlowBrush}" TextWrapping="Wrap" Margin="0 2 0 0" />
 
-                  <ProgressBar Height="8" Minimum="0" Maximum="100" Value="{Binding UpdateDownloadPercent}"
+                  <ProgressBar Height="8" Minimum="0" Maximum="100" Value="{Binding UpdateDownloadPercent, Mode=OneWay}"
                                Foreground="{StaticResource LiveGreenBrush}" Background="{StaticResource PanelCardBrush}" BorderThickness="0"
                                Margin="0 8 0 0"
                                Visibility="{Binding IsCheckingOrDownloadingUpdate, Converter={StaticResource BoolToVisibilityConverter}}" />
