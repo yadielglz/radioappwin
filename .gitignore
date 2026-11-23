@@ -1,8 +1,10 @@
 # Build and publish outputs
 bin/
 obj/
+publish/
 publish-*/
 *.zip
+*.msi
 
 # Visual Studio / IDE
 .vs/
