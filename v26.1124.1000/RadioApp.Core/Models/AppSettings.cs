@@ -55,6 +55,7 @@ public class AppSettings
 	public StationIdEnforcementMode RadioIdEnforcementMode { get; set; } = StationIdEnforcementMode.HardInterruptAtDeadline;
 	public double RadioIdOverlayDuckDb { get; set; } = -10.0;
 	public string RadioIdCategoryNames { get; set; } = "StationId,Station ID,ID";
+	public string LastServedRadioIdHourBucket { get; set; } = string.Empty;
 
 	// Gapless & Apple Music-Grade AutoMix Engine
 	public bool GaplessPlaybackEnabled { get; set; } = true;

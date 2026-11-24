@@ -458,4 +458,139 @@ public class RotationAndImagingTests
 		Assert.True(swpCue.IsSweeper);
 		Assert.True(idCue.IsStationId);
 	}
+
+	[Fact]
+	public void ImagingPolicyService_PreTopOfHourStationId_ServesNextHourBucketOnceAndNeverLoopsAt2Pm()
+	{
+		var settings = new AppSettings
+		{
+			RadioIdsEnabled = true,
+			RadioIdMinute = 0,
+			RadioIdToleranceBeforeMinutes = 5,
+			RadioIdToleranceAfterMinutes = 5,
+			RadioIdEnforcementMode = StationIdEnforcementMode.HardInterruptAtDeadline
+		};
+
+		// ID plays at 13:57:30 inside the 13:55..14:05 window for the 2:00 PM hourset
+		DateTime servedBucket = ImagingPolicyService.ResolveStationIdHourBucket(
+			new DateTime(2026, 11, 24, 13, 57, 30), settings);
+		Assert.Equal(new DateTime(2026, 11, 24, 14, 0, 0), servedBucket);
+
+		var queue = new List<LibraryItem>
+		{
+			MakeItem(1, "Song 1", "Artist A", "Music", "", 210, "/m/1.mp3"),
+			MakeItem(2, "Song 2", "Artist B", "Music", "", 220, "/m/2.mp3")
+		};
+		static bool IsId(LibraryItem i) => i.IsStationIdCue;
+
+		// Every single second from 13:57:31 through 14:04:59 MUST NOT queue or fire another 2:00 PM ID!
+		DateTime[] checkTimes =
+		{
+			new DateTime(2026, 11, 24, 13, 57, 31),
+			new DateTime(2026, 11, 24, 13, 58, 10),
+			new DateTime(2026, 11, 24, 13, 59, 55),
+			new DateTime(2026, 11, 24, 14, 0, 0),
+			new DateTime(2026, 11, 24, 14, 4, 59)
+		};
+		foreach (DateTime t in checkTimes)
+		{
+			StationIdDecision d = ImagingPolicyService.EvaluateStationId(
+				t, servedBucket, settings, TimeSpan.FromSeconds(5), queue, IsId);
+			Assert.Equal(StationIdActionKind.None, d.Action);
+		}
+
+		// Even if unserved, while a Station ID is currently playing on air, NEVER stack another ID!
+		StationIdDecision whileOnAir = ImagingPolicyService.EvaluateStationId(
+			new DateTime(2026, 11, 24, 14, 4, 59),
+			lastServedHourBucket: null,
+			settings,
+			TimeSpan.FromSeconds(4),
+			queue,
+			IsId,
+			isCurrentlyPlayingStationId: true);
+		Assert.Equal(StationIdActionKind.None, whileOnAir.Action);
+	}
+
+	[Fact]
+	public void ImagingPolicyService_NeverPullsStationIdInto30Or40Mark_AndDetectsDriftedIds()
+	{
+		var settings = new AppSettings
+		{
+			RadioIdsEnabled = true,
+			RadioIdMinute = 0,
+			RadioIdToleranceBeforeMinutes = 5,
+			RadioIdToleranceAfterMinutes = 5,
+			RadioIdEnforcementMode = StationIdEnforcementMode.QueueInWindow
+		};
+
+		// A 45-minute mix starting at 13:38 and ending at 14:23 straddles 13:55..14:05,
+		// but its start (13:38, 22m early) is way too far from 14:00 to insert an ID at :38!
+		var longMixQueue = new List<LibraryItem>
+		{
+			MakeItem(1, "45m Live Set", "DJ", "Music", "", 45 * 60, "/m/mix.mp3")
+		};
+		StationIdDecision d = ImagingPolicyService.EvaluateStationId(
+			new DateTime(2026, 11, 24, 13, 35, 0),
+			lastServedHourBucket: null,
+			settings,
+			TimeSpan.FromMinutes(3), // mix starts at 13:38
+			longMixQueue,
+			i => i.IsStationIdCue);
+		Assert.Equal(StationIdActionKind.None, d.Action);
+
+		// Drifted projected ID at 13:35 or 13:40 MUST fail window alignment check, while 13:58 passes
+		Assert.False(ImagingPolicyService.IsProjectedTimeWithinStationIdWindow(new DateTime(2026, 11, 24, 13, 35, 0), d, settings));
+		Assert.False(ImagingPolicyService.IsProjectedTimeWithinStationIdWindow(new DateTime(2026, 11, 24, 13, 40, 0), d, settings));
+		Assert.True(ImagingPolicyService.IsProjectedTimeWithinStationIdWindow(new DateTime(2026, 11, 24, 13, 58, 0), d, settings));
+	}
+
+	[Fact]
+	public void RotationService_AndSweeperPool_NeverPickFolderMatchedStationIds()
+	{
+		var settings = new AppSettings
+		{
+			SweeperFolder = "/media/Imaging",
+			RadioIdFolder = "/media/Imaging/StationIDs",
+			SweeperCategoryNames = "Sweeper,Sweep,Jingle",
+			RadioIdCategoryNames = "StationId,Station ID,ID"
+		};
+
+		// Station ID and Sweeper mistakenly indexed as Category="Music" in the library!
+		var library = new List<LibraryItem>
+		{
+			MakeItem(1, "Real Song 1", "Marc Anthony", "Music", "salsa", 240, "/media/Music/song1.mp3"),
+			MakeItem(2, "Real Song 2", "Gilberto Santa Rosa", "Music", "salsa", 230, "/media/Music/song2.mp3"),
+			MakeItem(3, "Legal ID Z93", "", "Music", "salsa", 7, "/media/Imaging/StationIDs/LegalID.mp3"),
+			MakeItem(4, "Sweeper Z93", "", "Music", "salsa", 5, "/media/Imaging/Sweeper1.mp3")
+		};
+
+		var rotation = new RotationService(seed: 123);
+		for (int i = 0; i < 12; i++)
+		{
+			LibraryItem? p1 = rotation.PickNextTrack(library, settings);
+			Assert.NotNull(p1);
+			Assert.True(p1!.Id is 1 or 2, $"Auto-DJ AllMusic picked imaging item '{p1.Title}'!");
+
+			LibraryItem? p2 = rotation.PickNextTrack(library, settings, tag: "salsa");
+			Assert.NotNull(p2);
+			Assert.True(p2!.Id is 1 or 2, $"Auto-DJ Tag picked imaging item '{p2.Title}'!");
+
+			LibraryItem? p3 = rotation.PickNextTrack(library, settings, preferredCategories: new[] { "Music", "Song", "Uncategorized" });
+			Assert.NotNull(p3);
+			Assert.True(p3!.Id is 1 or 2, $"Auto-DJ Category picked imaging item '{p3.Title}'!");
+		}
+
+		// Nested StationIDs subfolder inside SweeperFolder MUST be excluded from Sweeper pool!
+		CuePoolDiagnostics swpDiag = ImagingPolicyService.EvaluateCuePool(
+			library,
+			folderPath: settings.SweeperFolder,
+			categoryCsv: settings.SweeperCategoryNames,
+			minSeconds: 1.0,
+			maxSeconds: 15.0,
+			isStationId: false,
+			excludeFolderPath: settings.RadioIdFolder,
+			excludeCategoryCsv: settings.RadioIdCategoryNames);
+		Assert.Single(swpDiag.Eligible);
+		Assert.Equal(4, swpDiag.Eligible[0].Id);
+	}
 }

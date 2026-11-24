@@ -43,6 +43,7 @@ public static class ImagingPolicyService
 
 	/// <summary>
 	/// Audits the library against the configured Sweeper or Station ID folder, category, and min/max duration thresholds.
+	/// Optional exclusion folder/categories prevent Station IDs from bleeding into the Sweeper pool (and vice versa).
 	/// </summary>
 	public static CuePoolDiagnostics EvaluateCuePool(
 		IReadOnlyList<LibraryItem> library,
@@ -50,13 +51,21 @@ public static class ImagingPolicyService
 		string categoryCsv,
 		double minSeconds,
 		double maxSeconds,
-		bool isStationId)
+		bool isStationId,
+		string? excludeFolderPath = null,
+		string? excludeCategoryCsv = null)
 	{
 		double minSec = Math.Clamp(minSeconds, 0.2, 120.0);
 		double maxSec = Math.Clamp(Math.Max(minSec, maxSeconds), minSec, 180.0);
 		string[] categories = isStationId
 			? ParseCategoryList(categoryCsv, "StationId", "Station ID", "ID")
 			: ParseCategoryList(categoryCsv, "Sweeper", "Sweep", "Jingle");
+
+		bool hasExcludeFolder = !string.IsNullOrWhiteSpace(excludeFolderPath) &&
+			!string.Equals(NormalizeFolder(excludeFolderPath), NormalizeFolder(folderPath), StringComparison.OrdinalIgnoreCase);
+		string[] excludeCats = !string.IsNullOrWhiteSpace(excludeCategoryCsv)
+			? ParseCategoryList(excludeCategoryCsv)
+			: Array.Empty<string>();
 
 		var eligible = new List<LibraryItem>();
 		int totalMatches = 0;
@@ -67,6 +76,20 @@ public static class ImagingPolicyService
 		foreach (LibraryItem item in library)
 		{
 			if (!MatchesFolderOrCategory(item, folderPath, categories)) continue;
+
+			// Prevent Station IDs from ever being picked as Sweepers (e.g. nested folders or overlapping imports)
+			if (!isStationId && (item.IsStationIdCue ||
+				(hasExcludeFolder && MatchesFolderOrCategory(item, excludeFolderPath!, Array.Empty<string>())) ||
+				(excludeCats.Length > 0 && MatchesFolderOrCategory(item, string.Empty, excludeCats))))
+			{
+				continue;
+			}
+			if (isStationId && (item.IsSweeperCue ||
+				(hasExcludeFolder && MatchesFolderOrCategory(item, excludeFolderPath!, Array.Empty<string>()))))
+			{
+				continue;
+			}
+
 			totalMatches++;
 
 			if (!item.FileExistsCached)
@@ -180,8 +203,66 @@ public static class ImagingPolicyService
 	}
 
 	/// <summary>
+	/// Resolves which hourly Station ID bucket (yyyy-MM-dd HH:00:00) a Station ID played at
+	/// <paramref name="playTimeLocal"/> satisfies. Critically handles pre-top-of-hour windows:
+	/// e.g. an ID airing at 13:57 for the 14:00 ± 5m window MUST mark the 14:00 hour bucket served
+	/// (NOT 13:00), preventing back-to-back Station ID loops before top of hour!
+	/// </summary>
+	public static DateTime ResolveStationIdHourBucket(DateTime playTimeLocal, AppSettings settings)
+	{
+		int targetMin = Math.Clamp(settings.RadioIdMinute, 0, 59);
+		int beforeMin = Math.Clamp(settings.RadioIdToleranceBeforeMinutes, 0, 30);
+		int afterMin = Math.Clamp(settings.RadioIdToleranceAfterMinutes, 0, 30);
+
+		DateTime baseHour = new DateTime(playTimeLocal.Year, playTimeLocal.Month, playTimeLocal.Day, playTimeLocal.Hour, 0, 0);
+		DateTime[] candidates =
+		{
+			baseHour.AddHours(-1).AddMinutes(targetMin),
+			baseHour.AddMinutes(targetMin),
+			baseHour.AddHours(1).AddMinutes(targetMin)
+		};
+
+		DateTime? matchedTarget = null;
+		double bestDistSec = double.MaxValue;
+		foreach (DateTime candidate in candidates)
+		{
+			DateTime winStart = candidate.AddMinutes(-beforeMin);
+			DateTime winEnd = candidate.AddMinutes(afterMin);
+			if (playTimeLocal >= winStart && playTimeLocal <= winEnd)
+			{
+				double dist = Math.Abs((playTimeLocal - candidate).TotalSeconds);
+				if (dist < bestDistSec)
+				{
+					bestDistSec = dist;
+					matchedTarget = candidate;
+				}
+			}
+		}
+
+		DateTime resolved = matchedTarget ?? candidates.OrderBy(t => Math.Abs((playTimeLocal - t).TotalSeconds)).First();
+		return new DateTime(resolved.Year, resolved.Month, resolved.Day, resolved.Hour, 0, 0);
+	}
+
+	/// <summary>
+	/// Checks whether an already-projected Station ID in the Playout Queue is still aligned with
+	/// its intended hourly window (allowing small straddle tolerance, never drifting 15-30m early).
+	/// </summary>
+	public static bool IsProjectedTimeWithinStationIdWindow(
+		DateTime projectedAirTimeLocal,
+		StationIdDecision decision,
+		AppSettings settings)
+	{
+		int beforeMin = Math.Clamp(settings.RadioIdToleranceBeforeMinutes, 0, 30);
+		int afterMin = Math.Clamp(settings.RadioIdToleranceAfterMinutes, 0, 30);
+		double maxAllowanceSec = Math.Max(beforeMin, afterMin) * 60.0 + 300.0;
+		return (projectedAirTimeLocal >= decision.WindowStartLocal && projectedAirTimeLocal <= decision.WindowEndLocal) ||
+			   Math.Abs((projectedAirTimeLocal - decision.TargetTimeLocal).TotalSeconds) <= maxAllowanceSec;
+	}
+
+	/// <summary>
 	/// Evaluates the Station ID window and enforcement policy (QueueInWindow, HardInterruptAtDeadline, OverlayAtTarget).
-	/// Guarantees deterministic compliance so legal/top-of-hour IDs are never silently skipped.
+	/// Guarantees strict ONCE-PER-HOUR / ONCE-PER-HOURSET compliance: never double-fires back-to-back and never
+	/// pulls an ID 20–30 minutes early into :30 or :40 marks.
 	/// </summary>
 	public static StationIdDecision EvaluateStationId(
 		DateTime localNow,
@@ -189,7 +270,8 @@ public static class ImagingPolicyService
 		AppSettings settings,
 		TimeSpan currentTrackRemaining,
 		IReadOnlyList<LibraryItem> queue,
-		Func<LibraryItem, bool> isRadioIdPredicate)
+		Func<LibraryItem, bool> isRadioIdPredicate,
+		bool isCurrentlyPlayingStationId = false)
 	{
 		int targetMin = Math.Clamp(settings.RadioIdMinute, 0, 59);
 		int beforeMin = Math.Clamp(settings.RadioIdToleranceBeforeMinutes, 0, 30);
@@ -201,14 +283,14 @@ public static class ImagingPolicyService
 
 		// If the current hour's window has completely passed (or was already served), advance to next hour
 		DateTime currentBucket = new DateTime(target.Year, target.Month, target.Day, target.Hour, 0, 0);
-		bool alreadyServedCurrent = lastServedHourBucket.HasValue && lastServedHourBucket.Value == currentBucket;
+		bool alreadyServedCurrent = lastServedHourBucket.HasValue && lastServedHourBucket.Value >= currentBucket;
 		if (alreadyServedCurrent || localNow > winEnd)
 		{
 			target = target.AddHours(1);
 			winStart = target.AddMinutes(-beforeMin);
 			winEnd = target.AddMinutes(afterMin);
 			currentBucket = new DateTime(target.Year, target.Month, target.Day, target.Hour, 0, 0);
-			alreadyServedCurrent = lastServedHourBucket.HasValue && lastServedHourBucket.Value == currentBucket;
+			alreadyServedCurrent = lastServedHourBucket.HasValue && lastServedHourBucket.Value >= currentBucket;
 		}
 
 		string windowText = $"{winStart:HH:mm}–{winEnd:HH:mm}";
@@ -217,10 +299,34 @@ public static class ImagingPolicyService
 			return new StationIdDecision(StationIdActionKind.None, -1, target, winStart, winEnd, alreadyServedCurrent, "Station IDs disabled");
 		}
 
+		// Never stack another Station ID while one is currently playing on-air!
+		if (isCurrentlyPlayingStationId)
+		{
+			DateTime nextDisplayTarget = alreadyServedCurrent ? target.AddHours(1) : target;
+			return new StationIdDecision(
+				StationIdActionKind.None,
+				-1,
+				nextDisplayTarget,
+				nextDisplayTarget.AddMinutes(-beforeMin),
+				nextDisplayTarget.AddMinutes(afterMin),
+				true,
+				$"Station ID on air • Next target {nextDisplayTarget:HH:mm}");
+		}
+
 		bool alreadyQueued = queue.Any(isRadioIdPredicate);
 		if (alreadyServedCurrent)
 		{
-			return new StationIdDecision(StationIdActionKind.None, -1, target, winStart, winEnd, true, $"Served • Next target {target:HH:mm} ({windowText})");
+			DateTime nextTarget = target.AddHours(1);
+			DateTime nextStart = nextTarget.AddMinutes(-beforeMin);
+			DateTime nextEnd = nextTarget.AddMinutes(afterMin);
+			return new StationIdDecision(
+				StationIdActionKind.None,
+				-1,
+				nextTarget,
+				nextStart,
+				nextEnd,
+				true,
+				$"Served • Next target {nextTarget:HH:mm} ({nextStart:HH:mm}–{nextEnd:HH:mm})");
 		}
 
 		// Mode 1: OverlayAtTarget — duck music and fire ID directly at target minute without cutting song
@@ -250,7 +356,8 @@ public static class ImagingPolicyService
 
 		// Mode 2: HardInterruptAtDeadline — if we reached the end of the tolerance window (or exact target when tolerance=0) and still haven't aired it, enforce hard crossfade now!
 		if (settings.RadioIdEnforcementMode == StationIdEnforcementMode.HardInterruptAtDeadline &&
-			localNow >= winEnd.AddSeconds(-2))
+			localNow >= winEnd.AddSeconds(-2) &&
+			localNow <= winEnd)
 		{
 			return new StationIdDecision(
 				StationIdActionKind.FireHardInterruptNow,
@@ -290,11 +397,12 @@ public static class ImagingPolicyService
 		}
 
 		// Otherwise scan projected queue track boundaries to find the closest transition inside [winStart, winEnd],
-		// AND track any single long song that straddles across [winStart, winEnd] so Station IDs never vanish!
+		// AND track any single long song that straddles across [winStart, winEnd] (capped to avoid pulling IDs 20–30m early!).
 		int bestIdx = -1;
 		double bestDistanceSec = double.MaxValue;
 		int straddleIdx = -1;
 		double straddleDistanceSec = double.MaxValue;
+		double maxStraddleDistSec = Math.Max(beforeMin, afterMin) * 60.0 + 300.0;
 
 		for (int i = 0; i < queue.Count; i++)
 		{
@@ -315,12 +423,13 @@ public static class ImagingPolicyService
 			else if (trackStart < winStart && trackEnd > winEnd)
 			{
 				// Long track spans completely across the window (e.g. 11:53:54 -> 12:03:52 across 11:57-12:03).
-				// Pick whichever boundary (before track = i, or after track = i+1) is closest to target!
+				// Pick whichever boundary (before track = i, or after track = i+1) is closest to target,
+				// ONLY when that boundary is reasonably near the window (never 20-30 minutes early at :30/:40!).
 				double distBefore = Math.Abs((trackStart - target).TotalSeconds);
 				double distAfter = Math.Abs((trackEnd - target).TotalSeconds);
 				int candidateIdx = distBefore <= distAfter ? i : i + 1;
 				double candidateDist = Math.Min(distBefore, distAfter);
-				if (candidateDist < straddleDistanceSec)
+				if (candidateDist <= maxStraddleDistSec && candidateDist < straddleDistanceSec)
 				{
 					straddleDistanceSec = candidateDist;
 					straddleIdx = candidateIdx;

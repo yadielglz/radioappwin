@@ -1240,36 +1240,53 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
 	private void CheckTopOfHourSync(DateTime localNow)
 	{
-		if (!TopOfHourSyncEnabled) return;
+		if (!TopOfHourSyncEnabled || !RadioIdsEnabled) return;
 		DateTime target = new DateTime(localNow.Year, localNow.Month, localNow.Day, localNow.Hour, Math.Clamp(TopOfHourTargetMinute, 0, 59), 0);
-		if (Math.Abs((localNow - target).TotalSeconds) <= 2.0 && _lastTopOfHourSyncHandled != target)
+		if (Math.Abs((localNow - target).TotalSeconds) > 2.0 || _lastTopOfHourSyncHandled == target) return;
+
+		_lastTopOfHourSyncHandled = target;
+		DateTime targetHourBucket = ImagingPolicyService.ResolveStationIdHourBucket(target, _settings);
+
+		// Strictly ONCE per hourset: skip if this hour's Station ID already aired OR is currently on-air!
+		if (_lastRadioIdHour >= targetHourBucket || IsRadioId(_currentProgramItem, RadioIdFolder))
 		{
-			_lastTopOfHourSyncHandled = target;
-			DateTime targetHourBucket = new DateTime(target.Year, target.Month, target.Day, target.Hour, 0, 0);
-			if (RadioIdsEnabled && _lastRadioIdHour != targetHourBucket)
+			return;
+		}
+
+		// In QueueInWindow mode, if a Station ID is already projected/queued for this window, let the current song finish cleanly!
+		if (RadioIdEnforcementMode == StationIdEnforcementMode.QueueInWindow &&
+			Queue.Any(q => q.IsStationIdCue || IsRadioId(q.Item, RadioIdFolder)))
+		{
+			return;
+		}
+
+		LibraryItem? id = PickEligibleRadioId();
+		if (id == null) return;
+
+		MarkRadioIdServed(targetHourBucket);
+		if (RadioIdEnforcementMode == StationIdEnforcementMode.OverlayAtTarget && ProgramPlayer.IsPlaying)
+		{
+			_audioService.TriggerOverlay(id.FilePath, true, RadioIdOverlayDuckDb, 1.0);
+			ActivityStatus = $"Top-of-Hour Sync (:{TopOfHourTargetMinute:00}) fired overlay Station ID '{id.Title}'.";
+		}
+		else
+		{
+			// Remove any existing queued Station IDs before inserting at slot 0 so back-to-back IDs can NEVER happen!
+			for (int i = Queue.Count - 1; i >= 0; i--)
 			{
-				LibraryItem? id = PickEligibleRadioId();
-				if (id != null)
+				if (Queue[i].IsStationIdCue || IsRadioId(Queue[i].Item, RadioIdFolder))
 				{
-					if (RadioIdEnforcementMode == StationIdEnforcementMode.OverlayAtTarget && ProgramPlayer.IsPlaying)
-					{
-						_audioService.TriggerOverlay(id.FilePath, true, RadioIdOverlayDuckDb, 1.0);
-						MarkRadioIdServed(target);
-						ActivityStatus = $"Top-of-Hour Sync (:{TopOfHourTargetMinute:00}) fired overlay Station ID '{id.Title}'.";
-					}
-					else
-					{
-						Queue.Insert(0, new QueueDisplayItem(id, QueueCueRole.StationId, isAutoProjected: true));
-						RefreshGaplessPreload(forceReload: true);
-						if (ProgramPlayer.IsPlaying)
-						{
-							PlayNextFromQueue();
-						}
-						MarkRadioIdServed(target);
-						ActivityStatus = $"Top-of-Hour Sync (:{TopOfHourTargetMinute:00}) fired Station ID '{id.Title}'.";
-					}
+					Queue.RemoveAt(i);
 				}
 			}
+
+			Queue.Insert(0, new QueueDisplayItem(id, QueueCueRole.StationId, isAutoProjected: true));
+			RefreshGaplessPreload(forceReload: true);
+			if (ProgramPlayer.IsPlaying)
+			{
+				PlayNextFromQueue();
+			}
+			ActivityStatus = $"Top-of-Hour Sync (:{TopOfHourTargetMinute:00}) fired Station ID '{id.Title}'.";
 		}
 	}
 
@@ -1653,7 +1670,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
 	private bool ShouldAutoDjAddTrack()
 	{
-		if (Queue.Any(q => q.IsStationIdCue || IsRadioId(q.Item, RadioIdFolder))) return false;
 		if (!AutoDjFillCurrentHour) return Queue.Count < AutoDjQueueDepth;
 
 		DateTime now = DateTime.Now;
@@ -1695,8 +1711,24 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 	{
 		if (IsRadioId(item, RadioIdFolder))
 		{
-			MarkRadioIdServed();
+			// Resolve the exact target hourset bucket (e.g. 13:57 in a 14:00 ± 5m window serves 14:00, NOT 13:00!)
+			MarkRadioIdServed(DateTime.Now);
 			_pendingOverlaySweeper = null;
+
+			// Safety purge: remove any remaining auto-projected Station IDs so back-to-back IDs can NEVER occur
+			bool removedAny = false;
+			for (int i = Queue.Count - 1; i >= 0; i--)
+			{
+				if (Queue[i].IsAutoProjectedImaging && (Queue[i].IsStationIdCue || IsRadioId(Queue[i].Item, RadioIdFolder)))
+				{
+					Queue.RemoveAt(i);
+					removedAny = true;
+				}
+			}
+			if (removedAny)
+			{
+				RefreshGaplessPreload(forceReload: true);
+			}
 			return;
 		}
 
@@ -1738,30 +1770,49 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 			? ProgramPlayer.Duration - ProgramPlayer.Position
 			: TimeSpan.Zero;
 		DateTime? lastServed = _lastRadioIdHour == DateTime.MinValue ? null : _lastRadioIdHour;
+		bool playingIdNow = IsRadioId(_currentProgramItem, RadioIdFolder);
 		return ImagingPolicyService.EvaluateStationId(
 			localNow,
 			lastServed,
 			_settings,
 			curRem,
 			Queue.Where(q => !q.IsSweeperOverlayCue).Select(q => q.Item).ToList(),
-			item => IsRadioId(item, RadioIdFolder));
+			item => IsRadioId(item, RadioIdFolder),
+			isCurrentlyPlayingStationId: playingIdNow);
 	}
 
 	private bool TryInsertProjectedRadioId() => EnforceStationIdPolicy(DateTime.Now, allowLiveInterruptOrOverlay: false);
 
 	private bool EnforceStationIdPolicy(DateTime localNow, bool allowLiveInterruptOrOverlay)
 	{
-		StationIdDecision decision = EvaluateCurrentStationIdDecision(localNow);
-		RadioIdWindowStatusText = decision.StatusSummary;
-
 		if (!RadioIdsEnabled)
 		{
+			bool removed = false;
 			for (int i = Queue.Count - 1; i >= 0; i--)
 			{
-				if (Queue[i].IsAutoProjectedImaging && Queue[i].IsStationIdCue) Queue.RemoveAt(i);
+				if (Queue[i].IsAutoProjectedImaging && Queue[i].IsStationIdCue)
+				{
+					Queue.RemoveAt(i);
+					removed = true;
+				}
 			}
+			if (removed) RefreshGaplessPreload(forceReload: true);
+			RadioIdWindowStatusText = "Station IDs disabled";
 			return false;
 		}
+
+		StationIdDecision decision = EvaluateCurrentStationIdDecision(localNow);
+
+		// Audit any auto-projected Station IDs already sitting in Queue:
+		// 1) Remove duplicates so strictly ONE ID can ever be queued per hourset
+		// 2) Remove any ID that drifted outside its target hourly window (e.g. after skips, deletions, or AutoMix compression)
+		//    so it never fires early at :30 or :40 and immediately re-projects to the real top-of-hour window!
+		if (PruneStaleOrDriftedProjectedStationIds(localNow, decision))
+		{
+			decision = EvaluateCurrentStationIdDecision(localNow);
+		}
+
+		RadioIdWindowStatusText = decision.StatusSummary;
 
 		if (decision.Action == StationIdActionKind.None)
 		{
@@ -1791,6 +1842,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 		}
 
 		if (!allowLiveInterruptOrOverlay) return false;
+		if (IsRadioId(_currentProgramItem, RadioIdFolder)) return false;
 
 		if (decision.Action == StationIdActionKind.FireOverlayNow)
 		{
@@ -1836,6 +1888,51 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 		return false;
 	}
 
+	private bool PruneStaleOrDriftedProjectedStationIds(DateTime localNow, StationIdDecision decision)
+	{
+		TimeSpan curRem = ProgramPlayer.IsPlaying && ProgramPlayer.Duration > ProgramPlayer.Position
+			? ProgramPlayer.Duration - ProgramPlayer.Position
+			: TimeSpan.Zero;
+		DateTime cursor = localNow + curRem;
+		bool removedAny = false;
+		bool removedSlotZero = false;
+		bool keptOne = false;
+
+		for (int i = 0; i < Queue.Count; i++)
+		{
+			QueueDisplayItem entry = Queue[i];
+			bool isAutoId = entry.IsAutoProjectedImaging && (entry.IsStationIdCue || IsRadioId(entry.Item, RadioIdFolder));
+			if (isAutoId)
+			{
+				bool shouldRemove = keptOne ||
+					decision.AlreadyServedThisHour ||
+					!ImagingPolicyService.IsProjectedTimeWithinStationIdWindow(cursor, decision, _settings);
+
+				if (shouldRemove)
+				{
+					if (i == 0) removedSlotZero = true;
+					Queue.RemoveAt(i);
+					removedAny = true;
+					i--;
+					continue;
+				}
+				keptOne = true;
+			}
+
+			if (!entry.IsSweeperOverlayCue)
+			{
+				TimeSpan dur = entry.Item.Duration > TimeSpan.Zero ? entry.Item.Duration : TimeSpan.FromMinutes(3);
+				cursor += dur;
+			}
+		}
+
+		if (removedSlotZero)
+		{
+			RefreshGaplessPreload(forceReload: true);
+		}
+		return removedAny;
+	}
+
 	private LibraryItem? PickEligibleSweeper() =>
 		Library.GetRandomSweeper(
 			SweeperFolder,
@@ -1866,7 +1963,12 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 				_lastActiveRotationKey = activeKey;
 				for (int i = Queue.Count - 1; i >= 0; i--)
 				{
-					if (_autoDjQueuedItems.Remove(Queue[i].Item)) Queue.RemoveAt(i);
+					// Clear BOTH Auto-DJ songs AND auto-projected imaging cues so a projected :00 Station ID
+					// is never stranded at slot #0 when a daypart switches mid-hour!
+					if (_autoDjQueuedItems.Remove(Queue[i].Item) || Queue[i].IsAutoProjectedImaging)
+					{
+						Queue.RemoveAt(i);
+					}
 				}
 				ClearGaplessPreload();
 				ActivityStatus = $"Switched active daypart — {activeNow.Description}";
@@ -2230,6 +2332,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 			HourlyTagRules.Add(rule);
 		}
 
+		if (!string.IsNullOrWhiteSpace(_settings.LastServedRadioIdHourBucket) &&
+			DateTime.TryParseExact(
+				_settings.LastServedRadioIdHourBucket,
+				"yyyy-MM-ddTHH:00:00",
+				System.Globalization.CultureInfo.InvariantCulture,
+				System.Globalization.DateTimeStyles.None,
+				out DateTime savedBucket))
+		{
+			_lastRadioIdHour = savedBucket;
+		}
+		else
+		{
+			_lastRadioIdHour = DateTime.MinValue;
+		}
+
 		LoadRotationBlocksFromSettings();
 	}
 
@@ -2292,7 +2409,11 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 	{
 		if (_settings.RestoreQueueOnStartup)
 		{
-			_playsetService.SavePersistedQueue(Queue.Select(q => q.Item), _autoDjQueuedItems);
+			// Never persist transient auto-projected Sweepers/Station IDs — they are freshly projected for the live clock!
+			IEnumerable<LibraryItem> persistable = Queue
+				.Where(q => !q.IsAutoProjectedImaging && !IsRadioId(q.Item, RadioIdFolder))
+				.Select(q => q.Item);
+			_playsetService.SavePersistedQueue(persistable, _autoDjQueuedItems);
 		}
 	}
 
@@ -2300,14 +2421,18 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 	{
 		if (!_settings.RestoreQueueOnStartup) return;
 		var restored = _playsetService.LoadPersistedQueue(Library.Items);
+		int restoredCount = 0;
 		foreach (var (item, isAuto) in restored)
 		{
+			// Skip stale Station IDs or Sweepers left from a previous session so they never play out-of-window
+			if (ImagingPolicyService.IsImagingOrCommercial(item, _settings)) continue;
 			Queue.Add(new QueueDisplayItem(item));
 			if (isAuto) _autoDjQueuedItems.Add(item);
+			restoredCount++;
 		}
-		if (restored.Count > 0)
+		if (restoredCount > 0)
 		{
-			ActivityStatus = $"Restored {restored.Count} queued track(s) from last session.";
+			ActivityStatus = $"Restored {restoredCount} queued track(s) from last session.";
 		}
 	}
 
@@ -2364,7 +2489,13 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 	private void MarkRadioIdServed(DateTime? targetTime = null)
 	{
 		DateTime refTime = targetTime ?? DateTime.Now;
-		_lastRadioIdHour = new DateTime(refTime.Year, refTime.Month, refTime.Day, refTime.Hour, 0, 0);
+		DateTime resolvedBucket = ImagingPolicyService.ResolveStationIdHourBucket(refTime, _settings);
+		if (resolvedBucket > _lastRadioIdHour)
+		{
+			_lastRadioIdHour = resolvedBucket;
+			_settings.LastServedRadioIdHourBucket = resolvedBucket.ToString("yyyy-MM-ddTHH:00:00", System.Globalization.CultureInfo.InvariantCulture);
+			SaveSettingsSafe();
+		}
 	}
 
 	private bool IsRadioId(LibraryItem? item, string folder)

@@ -85,7 +85,11 @@ public sealed class RotationService
 				if (resolvedPlaysetTracks != null && resolvedPlaysetTracks.Count > 0)
 				{
 					string poolKey = $"playset:{rotation.PlaysetId ?? 0}";
-					return PickFromCandidatePool(resolvedPlaysetTracks.ToList(), poolKey, effectiveSettings, currentlyQueued, utcNow);
+					List<LibraryItem> nonImaging = resolvedPlaysetTracks
+						.Where(item => !ImagingPolicyService.IsImagingOrCommercial(item, effectiveSettings))
+						.ToList();
+					List<LibraryItem> pool = nonImaging.Count > 0 ? nonImaging : resolvedPlaysetTracks.ToList();
+					return PickFromCandidatePool(pool, poolKey, effectiveSettings, currentlyQueued, utcNow);
 				}
 				// Graceful fallback to all music if playset is empty or deleted
 				return PickNextTrack(library, effectiveSettings, null, null, currentlyQueued, utcNow);
@@ -130,14 +134,14 @@ public sealed class RotationService
 				.ToArray();
 			poolKey = "tag:" + string.Join(",", targetTags.OrderBy(t => t));
 			candidates = library.Where(item =>
-				IsMusicCandidate(item) &&
+				IsMusicCandidate(item, settings) &&
 				item.Tags.Split(new[] { ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
 					.Any(t => targetTags.Contains(t.ToLowerInvariant()))).ToList();
 
 			if (candidates.Count == 0)
 			{
 				poolKey = "cat:music_fallback";
-				candidates = library.Where(IsMusicCandidate).ToList();
+				candidates = library.Where(item => IsMusicCandidate(item, settings)).ToList();
 			}
 		}
 		else if (preferredCategories != null && preferredCategories.Any())
@@ -147,13 +151,19 @@ public sealed class RotationService
 				.Select(c => c.Trim().ToLowerInvariant())
 				.ToArray();
 			poolKey = "cat:" + string.Join(",", normalized.OrderBy(c => c));
+
+			bool explicitlyRequestedImaging = normalized.Any(c =>
+				c is "commercial" or "commercials" or "ad" or "ads" or "promo" or
+				"sweeper" or "sweep" or "jingle" or "stationid" or "station id" or "id");
+
 			candidates = library.Where(item =>
-				normalized.Contains((item.Category ?? string.Empty).Trim().ToLowerInvariant())).ToList();
+				normalized.Contains((item.Category ?? string.Empty).Trim().ToLowerInvariant()) &&
+				(explicitlyRequestedImaging || !ImagingPolicyService.IsImagingOrCommercial(item, settings))).ToList();
 		}
 		else
 		{
 			poolKey = "cat:music_default";
-			candidates = library.Where(IsMusicCandidate).ToList();
+			candidates = library.Where(item => IsMusicCandidate(item, settings)).ToList();
 		}
 
 		return PickFromCandidatePool(candidates, poolKey, settings, currentlyQueued, utcNow);
@@ -259,8 +269,16 @@ public sealed class RotationService
 		return fallback;
 	}
 
-	public static bool IsMusicCandidate(LibraryItem item)
+	public static bool IsMusicCandidate(LibraryItem item, AppSettings? settings = null)
 	{
+		if (settings != null && ImagingPolicyService.IsImagingOrCommercial(item, settings))
+		{
+			return false;
+		}
+		if (item.IsSweeperCue || item.IsStationIdCue || item.IsCommercialCue)
+		{
+			return false;
+		}
 		return string.Equals(item.Category, "Music", StringComparison.OrdinalIgnoreCase) ||
 			   string.Equals(item.Category, "Song", StringComparison.OrdinalIgnoreCase) ||
 			   string.Equals(item.Category, "Uncategorized", StringComparison.OrdinalIgnoreCase) ||

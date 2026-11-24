@@ -530,7 +530,9 @@ public sealed class LibraryViewModel : ViewModelBase, IDisposable
 			_settings.SweeperCategoryNames,
 			_settings.SweeperMinDurationSeconds,
 			_settings.SweeperMaxDurationSeconds,
-			isStationId: false);
+			isStationId: false,
+			excludeFolderPath: _settings.RadioIdFolder,
+			excludeCategoryCsv: _settings.RadioIdCategoryNames);
 
 	public CuePoolDiagnostics EvaluateStationIdPool() =>
 		ImagingPolicyService.EvaluateCuePool(
@@ -539,12 +541,15 @@ public sealed class LibraryViewModel : ViewModelBase, IDisposable
 			_settings.RadioIdCategoryNames,
 			_settings.RadioIdMinDurationSeconds,
 			_settings.RadioIdMaxDurationSeconds,
-			isStationId: true);
+			isStationId: true,
+			excludeFolderPath: _settings.SweeperFolder,
+			excludeCategoryCsv: _settings.SweeperCategoryNames);
 
 	public LibraryItem? GetRandomSweeper(string folderPath, TimeSpan minDur, TimeSpan maxDur)
 	{
 		CuePoolDiagnostics diag = ImagingPolicyService.EvaluateCuePool(
-			Items, folderPath, _settings.SweeperCategoryNames, minDur.TotalSeconds, maxDur.TotalSeconds, isStationId: false);
+			Items, folderPath, _settings.SweeperCategoryNames, minDur.TotalSeconds, maxDur.TotalSeconds, isStationId: false,
+			excludeFolderPath: _settings.RadioIdFolder, excludeCategoryCsv: _settings.RadioIdCategoryNames);
 		if (diag.Eligible.Count > 0)
 		{
 			return PickWithRecentHistory(diag.Eligible, _recentSweepers);
@@ -555,7 +560,8 @@ public sealed class LibraryViewModel : ViewModelBase, IDisposable
 	public LibraryItem? GetRandomRadioId(string folderPath, TimeSpan minDur, TimeSpan maxDur)
 	{
 		CuePoolDiagnostics diag = ImagingPolicyService.EvaluateCuePool(
-			Items, folderPath, _settings.RadioIdCategoryNames, minDur.TotalSeconds, maxDur.TotalSeconds, isStationId: true);
+			Items, folderPath, _settings.RadioIdCategoryNames, minDur.TotalSeconds, maxDur.TotalSeconds, isStationId: true,
+			excludeFolderPath: _settings.SweeperFolder, excludeCategoryCsv: _settings.SweeperCategoryNames);
 		if (diag.Eligible.Count > 0)
 		{
 			return PickWithRecentHistory(diag.Eligible, _recentRadioIds);
