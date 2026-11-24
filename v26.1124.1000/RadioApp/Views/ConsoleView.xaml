@@ -345,13 +345,13 @@
         </Grid.RowDefinitions>
 
         <DockPanel Grid.Row="0" Margin="0 0 0 8">
-          <TextBlock Text="PLAYOUT QUEUE" Style="{StaticResource SectionTitleStyle}" />
-          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="8 0 0 0">
             <TextBlock Text="{Binding QueueStatus}" Style="{StaticResource TinyStatusStyle}" Margin="0 0 8 0" />
             <Border Background="#162235" CornerRadius="4" Padding="6 2">
               <TextBlock Text="{Binding QueueTotalDurationText}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" Foreground="{StaticResource PrimaryGlowBrush}" />
             </Border>
           </StackPanel>
+          <TextBlock Text="PLAYOUT QUEUE" Style="{StaticResource SectionTitleStyle}" VerticalAlignment="Center" />
         </DockPanel>
 
         <!-- Quick Playset Loader Bar -->
@@ -411,7 +411,7 @@
         <!-- Virtualized Queue DataGrid with Projected Airtimes -->
         <DataGrid Grid.Row="4" IsReadOnly="True" ItemsSource="{Binding Queue}" SelectedItem="{Binding SelectedQueueItem, Mode=TwoWay}">
           <DataGrid.Columns>
-            <DataGridTextColumn Header="Air" Width="62" Binding="{Binding ProjectedStartText}">
+            <DataGridTextColumn Header="Air" Width="68" Binding="{Binding ProjectedStartText}">
               <DataGridTextColumn.ElementStyle>
                 <Style TargetType="{x:Type TextBlock}">
                   <Setter Property="FontFamily" Value="Consolas" />
@@ -421,10 +421,10 @@
                 </Style>
               </DataGridTextColumn.ElementStyle>
             </DataGridTextColumn>
-            <DataGridTemplateColumn Header="Cue" Width="42">
+            <DataGridTemplateColumn Header="Cue" Width="44">
               <DataGridTemplateColumn.CellTemplate>
                 <DataTemplate>
-                  <Border CornerRadius="4" Padding="4 1" HorizontalAlignment="Center" MinWidth="28">
+                  <Border CornerRadius="4" Padding="4 1" HorizontalAlignment="Center" MinWidth="30">
                     <Border.Style>
                       <Style TargetType="{x:Type Border}">
                         <Setter Property="Background" Value="Transparent" />
@@ -434,6 +434,9 @@
                           </DataTrigger>
                           <DataTrigger Binding="{Binding IsSweeperCue}" Value="True">
                             <Setter Property="Background" Value="#B45309" />
+                          </DataTrigger>
+                          <DataTrigger Binding="{Binding IsSweeperOverlayCue}" Value="True">
+                            <Setter Property="Background" Value="#9D174D" />
                           </DataTrigger>
                           <DataTrigger Binding="{Binding IsCommercialCue}" Value="True">
                             <Setter Property="Background" Value="#6D28D9" />
@@ -447,7 +450,7 @@
               </DataGridTemplateColumn.CellTemplate>
             </DataGridTemplateColumn>
             <DataGridTextColumn Header="Title" Width="*" Binding="{Binding Title}" />
-            <DataGridTextColumn Header="BPM" Width="46" Binding="{Binding BpmText}" />
+            <DataGridTextColumn Header="BPM" Width="50" Binding="{Binding BpmText}" />
             <DataGridTextColumn Header="Len" Width="50" Binding="{Binding DurationText}" />
           </DataGrid.Columns>
         </DataGrid>

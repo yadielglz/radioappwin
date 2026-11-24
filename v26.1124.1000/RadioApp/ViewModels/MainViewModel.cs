@@ -20,21 +20,43 @@ using RadioApp.Views;
 
 namespace RadioApp.ViewModels;
 
+public enum QueueCueRole
+{
+	None,
+	Sweeper,
+	SweeperOverlay,
+	StationId,
+	Commercial
+}
+
 public sealed class QueueDisplayItem : ViewModelBase
 {
 	private string _projectedStartText = "--:--";
 	private bool _isPreloadedNext;
 
 	public LibraryItem Item { get; }
+	public QueueCueRole CueRole { get; set; }
+	public bool IsAutoProjectedImaging { get; set; }
+
 	public string Title => Item.Title;
 	public string Artist => Item.Artist;
 	public string Category => Item.Category;
 	public string DurationText => Item.DurationText;
 	public string BpmText => Item.BpmText;
-	public string QueueCueLabel => Item.QueueCueLabel;
-	public bool IsStationIdCue => Item.IsStationIdCue;
-	public bool IsSweeperCue => Item.IsSweeperCue;
-	public bool IsCommercialCue => Item.IsCommercialCue;
+
+	public bool IsStationIdCue => CueRole == QueueCueRole.StationId || Item.IsStationIdCue;
+	public bool IsSweeperOverlayCue => CueRole == QueueCueRole.SweeperOverlay;
+	public bool IsSweeperCue => CueRole == QueueCueRole.Sweeper || (!IsSweeperOverlayCue && !IsStationIdCue && Item.IsSweeperCue);
+	public bool IsCommercialCue => CueRole == QueueCueRole.Commercial || Item.IsCommercialCue;
+
+	public string QueueCueLabel => CueRole switch
+	{
+		QueueCueRole.StationId => "ID",
+		QueueCueRole.SweeperOverlay => "OVL",
+		QueueCueRole.Sweeper => "SWP",
+		QueueCueRole.Commercial => "AD",
+		_ => Item.QueueCueLabel
+	};
 
 	public string ProjectedStartText
 	{
@@ -48,7 +70,12 @@ public sealed class QueueDisplayItem : ViewModelBase
 		set => SetProperty(ref _isPreloadedNext, value);
 	}
 
-	public QueueDisplayItem(LibraryItem item) => Item = item;
+	public QueueDisplayItem(LibraryItem item, QueueCueRole cueRole = QueueCueRole.None, bool isAutoProjected = false)
+	{
+		Item = item;
+		CueRole = cueRole;
+		IsAutoProjectedImaging = isAutoProjected;
+	}
 }
 
 public sealed class CartPadViewModel : ViewModelBase
@@ -451,30 +478,30 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 	public string RotationCoverageSummary { get => _rotationCoverageSummary; private set => SetProperty(ref _rotationCoverageSummary, value); }
 
 	// Sweeper Threshold & Enforcement Properties
-	public bool SweepersEnabled { get => _settings.SweepersEnabled; set { if (_settings.SweepersEnabled != value) { _settings.SweepersEnabled = value; OnPropertyChanged(); SaveSettingsSafe(); UpdateAutomationCues(); RefreshImagingDiagnostics(); } } }
-	public string SweeperFolder { get => _settings.SweeperFolder; set { if (_settings.SweeperFolder != (value ?? string.Empty)) { _settings.SweeperFolder = value ?? string.Empty; OnPropertyChanged(); SaveSettingsSafe(); UpdateAutomationCues(); RefreshImagingDiagnostics(); } } }
-	public int SweeperMinSongs { get => _settings.SweeperMinSongs; set { int c = Math.Clamp(value, 1, 30); _settings.SweeperMinSongs = c; if (_settings.SweeperMaxSongs < c) _settings.SweeperMaxSongs = c; _songsUntilSweeper = Math.Clamp(_songsUntilSweeper, c, _settings.SweeperMaxSongs); OnPropertyChanged(); OnPropertyChanged(nameof(SweeperMaxSongs)); SaveSettingsSafe(); UpdateAutomationCues(); } }
-	public int SweeperMaxSongs { get => _settings.SweeperMaxSongs; set { int c = Math.Clamp(value, _settings.SweeperMinSongs, 40); _settings.SweeperMaxSongs = c; _songsUntilSweeper = Math.Clamp(_songsUntilSweeper, _settings.SweeperMinSongs, c); OnPropertyChanged(); SaveSettingsSafe(); UpdateAutomationCues(); } }
-	public double SweeperMinDurationSeconds { get => _settings.SweeperMinDurationSeconds; set { double c = Math.Round(Math.Clamp(value, 0.5, 60.0), 1); _settings.SweeperMinDurationSeconds = c; if (_settings.SweeperMaxDurationSeconds < c) _settings.SweeperMaxDurationSeconds = c; OnPropertyChanged(); OnPropertyChanged(nameof(SweeperMaxDurationSeconds)); SaveSettingsSafe(); RefreshImagingDiagnostics(); } }
-	public double SweeperMaxDurationSeconds { get => _settings.SweeperMaxDurationSeconds; set { double c = Math.Round(Math.Clamp(value, _settings.SweeperMinDurationSeconds, 120.0), 1); _settings.SweeperMaxDurationSeconds = c; OnPropertyChanged(); SaveSettingsSafe(); RefreshImagingDiagnostics(); } }
-	public double SweeperMinCooldownMinutes { get => _settings.SweeperMinCooldownMinutes; set { double c = Math.Round(Math.Clamp(value, 0.0, 60.0), 1); if (Math.Abs(_settings.SweeperMinCooldownMinutes - c) > 0.01) { _settings.SweeperMinCooldownMinutes = c; OnPropertyChanged(); SaveSettingsSafe(); } } }
-	public SweeperPlaybackMode SweeperPlaybackMode { get => _settings.SweeperPlaybackMode; set { if (_settings.SweeperPlaybackMode != value) { _settings.SweeperPlaybackMode = value; OnPropertyChanged(); SaveSettingsSafe(); UpdateAutomationCues(); } } }
+	public bool SweepersEnabled { get => _settings.SweepersEnabled; set { if (_settings.SweepersEnabled != value) { _settings.SweepersEnabled = value; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } } }
+	public string SweeperFolder { get => _settings.SweeperFolder; set { if (_settings.SweeperFolder != (value ?? string.Empty)) { _settings.SweeperFolder = value ?? string.Empty; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } } }
+	public int SweeperMinSongs { get => _settings.SweeperMinSongs; set { int c = Math.Clamp(value, 1, 30); _settings.SweeperMinSongs = c; if (_settings.SweeperMaxSongs < c) _settings.SweeperMaxSongs = c; _songsUntilSweeper = Math.Clamp(_songsUntilSweeper, c, _settings.SweeperMaxSongs); OnPropertyChanged(); OnPropertyChanged(nameof(SweeperMaxSongs)); SaveSettingsSafe(); ReprojectImagingInQueue(); } }
+	public int SweeperMaxSongs { get => _settings.SweeperMaxSongs; set { int c = Math.Clamp(value, _settings.SweeperMinSongs, 40); _settings.SweeperMaxSongs = c; _songsUntilSweeper = Math.Clamp(_songsUntilSweeper, _settings.SweeperMinSongs, c); OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); } }
+	public double SweeperMinDurationSeconds { get => _settings.SweeperMinDurationSeconds; set { double c = Math.Round(Math.Clamp(value, 0.5, 60.0), 1); _settings.SweeperMinDurationSeconds = c; if (_settings.SweeperMaxDurationSeconds < c) _settings.SweeperMaxDurationSeconds = c; OnPropertyChanged(); OnPropertyChanged(nameof(SweeperMaxDurationSeconds)); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } }
+	public double SweeperMaxDurationSeconds { get => _settings.SweeperMaxDurationSeconds; set { double c = Math.Round(Math.Clamp(value, _settings.SweeperMinDurationSeconds, 120.0), 1); _settings.SweeperMaxDurationSeconds = c; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } }
+	public double SweeperMinCooldownMinutes { get => _settings.SweeperMinCooldownMinutes; set { double c = Math.Round(Math.Clamp(value, 0.0, 60.0), 1); if (Math.Abs(_settings.SweeperMinCooldownMinutes - c) > 0.01) { _settings.SweeperMinCooldownMinutes = c; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); } } }
+	public SweeperPlaybackMode SweeperPlaybackMode { get => _settings.SweeperPlaybackMode; set { if (_settings.SweeperPlaybackMode != value) { _settings.SweeperPlaybackMode = value; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); } } }
 	public double SweeperOverlayDuckDb { get => _settings.SweeperOverlayDuckDb; set { double c = Math.Round(Math.Clamp(value, -24.0, -2.0), 1); if (Math.Abs(_settings.SweeperOverlayDuckDb - c) > 0.01) { _settings.SweeperOverlayDuckDb = c; OnPropertyChanged(); SaveSettingsSafe(); } } }
-	public bool SweeperAvoidAdjacentImaging { get => _settings.SweeperAvoidAdjacentImaging; set { if (_settings.SweeperAvoidAdjacentImaging != value) { _settings.SweeperAvoidAdjacentImaging = value; OnPropertyChanged(); SaveSettingsSafe(); } } }
-	public string SweeperCategoryNames { get => _settings.SweeperCategoryNames; set { if (_settings.SweeperCategoryNames != (value ?? string.Empty)) { _settings.SweeperCategoryNames = value ?? string.Empty; OnPropertyChanged(); SaveSettingsSafe(); RefreshImagingDiagnostics(); } } }
+	public bool SweeperAvoidAdjacentImaging { get => _settings.SweeperAvoidAdjacentImaging; set { if (_settings.SweeperAvoidAdjacentImaging != value) { _settings.SweeperAvoidAdjacentImaging = value; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); } } }
+	public string SweeperCategoryNames { get => _settings.SweeperCategoryNames; set { if (_settings.SweeperCategoryNames != (value ?? string.Empty)) { _settings.SweeperCategoryNames = value ?? string.Empty; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } } }
 	public string SweeperPoolStatusText { get => _sweeperPoolStatusText; private set => SetProperty(ref _sweeperPoolStatusText, value); }
 
 	// Station ID Threshold & Enforcement Properties
-	public bool RadioIdsEnabled { get => _settings.RadioIdsEnabled; set { if (_settings.RadioIdsEnabled != value) { _settings.RadioIdsEnabled = value; OnPropertyChanged(); SaveSettingsSafe(); UpdateAutomationCues(); RefreshImagingDiagnostics(); } } }
-	public string RadioIdFolder { get => _settings.RadioIdFolder; set { if (_settings.RadioIdFolder != (value ?? string.Empty)) { _settings.RadioIdFolder = value ?? string.Empty; OnPropertyChanged(); SaveSettingsSafe(); UpdateAutomationCues(); RefreshImagingDiagnostics(); } } }
-	public int RadioIdMinute { get => _settings.RadioIdMinute; set { int c = Math.Clamp(value, 0, 59); _settings.RadioIdMinute = c; OnPropertyChanged(); SaveSettingsSafe(); UpdateAutomationCues(); RefreshImagingDiagnostics(); } }
-	public int RadioIdToleranceBeforeMinutes { get => _settings.RadioIdToleranceBeforeMinutes; set { int c = Math.Clamp(value, 0, 30); _settings.RadioIdToleranceBeforeMinutes = c; OnPropertyChanged(); SaveSettingsSafe(); UpdateAutomationCues(); RefreshImagingDiagnostics(); } }
-	public int RadioIdToleranceAfterMinutes { get => _settings.RadioIdToleranceAfterMinutes; set { int c = Math.Clamp(value, 0, 30); _settings.RadioIdToleranceAfterMinutes = c; OnPropertyChanged(); SaveSettingsSafe(); UpdateAutomationCues(); RefreshImagingDiagnostics(); } }
-	public double RadioIdMinDurationSeconds { get => _settings.RadioIdMinDurationSeconds; set { double c = Math.Round(Math.Clamp(value, 0.5, 60.0), 1); _settings.RadioIdMinDurationSeconds = c; if (_settings.RadioIdMaxDurationSeconds < c) _settings.RadioIdMaxDurationSeconds = c; OnPropertyChanged(); OnPropertyChanged(nameof(RadioIdMaxDurationSeconds)); SaveSettingsSafe(); RefreshImagingDiagnostics(); } }
-	public double RadioIdMaxDurationSeconds { get => _settings.RadioIdMaxDurationSeconds; set { double c = Math.Round(Math.Clamp(value, _settings.RadioIdMinDurationSeconds, 120.0), 1); _settings.RadioIdMaxDurationSeconds = c; OnPropertyChanged(); SaveSettingsSafe(); RefreshImagingDiagnostics(); } }
-	public StationIdEnforcementMode RadioIdEnforcementMode { get => _settings.RadioIdEnforcementMode; set { if (_settings.RadioIdEnforcementMode != value) { _settings.RadioIdEnforcementMode = value; OnPropertyChanged(); SaveSettingsSafe(); UpdateAutomationCues(); RefreshImagingDiagnostics(); } } }
+	public bool RadioIdsEnabled { get => _settings.RadioIdsEnabled; set { if (_settings.RadioIdsEnabled != value) { _settings.RadioIdsEnabled = value; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } } }
+	public string RadioIdFolder { get => _settings.RadioIdFolder; set { if (_settings.RadioIdFolder != (value ?? string.Empty)) { _settings.RadioIdFolder = value ?? string.Empty; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } } }
+	public int RadioIdMinute { get => _settings.RadioIdMinute; set { int c = Math.Clamp(value, 0, 59); _settings.RadioIdMinute = c; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } }
+	public int RadioIdToleranceBeforeMinutes { get => _settings.RadioIdToleranceBeforeMinutes; set { int c = Math.Clamp(value, 0, 30); _settings.RadioIdToleranceBeforeMinutes = c; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } }
+	public int RadioIdToleranceAfterMinutes { get => _settings.RadioIdToleranceAfterMinutes; set { int c = Math.Clamp(value, 0, 30); _settings.RadioIdToleranceAfterMinutes = c; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } }
+	public double RadioIdMinDurationSeconds { get => _settings.RadioIdMinDurationSeconds; set { double c = Math.Round(Math.Clamp(value, 0.5, 60.0), 1); _settings.RadioIdMinDurationSeconds = c; if (_settings.RadioIdMaxDurationSeconds < c) _settings.RadioIdMaxDurationSeconds = c; OnPropertyChanged(); OnPropertyChanged(nameof(RadioIdMaxDurationSeconds)); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } }
+	public double RadioIdMaxDurationSeconds { get => _settings.RadioIdMaxDurationSeconds; set { double c = Math.Round(Math.Clamp(value, _settings.RadioIdMinDurationSeconds, 120.0), 1); _settings.RadioIdMaxDurationSeconds = c; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } }
+	public StationIdEnforcementMode RadioIdEnforcementMode { get => _settings.RadioIdEnforcementMode; set { if (_settings.RadioIdEnforcementMode != value) { _settings.RadioIdEnforcementMode = value; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } } }
 	public double RadioIdOverlayDuckDb { get => _settings.RadioIdOverlayDuckDb; set { double c = Math.Round(Math.Clamp(value, -24.0, -2.0), 1); if (Math.Abs(_settings.RadioIdOverlayDuckDb - c) > 0.01) { _settings.RadioIdOverlayDuckDb = c; OnPropertyChanged(); SaveSettingsSafe(); } } }
-	public string RadioIdCategoryNames { get => _settings.RadioIdCategoryNames; set { if (_settings.RadioIdCategoryNames != (value ?? string.Empty)) { _settings.RadioIdCategoryNames = value ?? string.Empty; OnPropertyChanged(); SaveSettingsSafe(); RefreshImagingDiagnostics(); } } }
+	public string RadioIdCategoryNames { get => _settings.RadioIdCategoryNames; set { if (_settings.RadioIdCategoryNames != (value ?? string.Empty)) { _settings.RadioIdCategoryNames = value ?? string.Empty; OnPropertyChanged(); SaveSettingsSafe(); ReprojectImagingInQueue(); RefreshImagingDiagnostics(); } } }
 	public string RadioIdPoolStatusText { get => _radioIdPoolStatusText; private set => SetProperty(ref _radioIdPoolStatusText, value); }
 	public string RadioIdWindowStatusText { get => _radioIdWindowStatusText; private set => SetProperty(ref _radioIdWindowStatusText, value); }
 
@@ -951,12 +978,21 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 		}
 
 		// If track is already preloaded and playing, perform an Apple Music-style smooth manual crossfade!
-		if (ProgramPlayer.IsPlaying && _preloadedProgramItem != null &&
-			string.Equals(Queue[0].Item.FilePath, _preloadedProgramItem.FilePath, StringComparison.OrdinalIgnoreCase) &&
+		LibraryItem? nextPlayable = GetNextPlayableDeckItem(out _);
+		if (ProgramPlayer.IsPlaying && _preloadedProgramItem != null && nextPlayable != null &&
+			string.Equals(nextPlayable.FilePath, _preloadedProgramItem.FilePath, StringComparison.OrdinalIgnoreCase) &&
 			_audioService.TriggerSmoothSkipToPreloaded())
 		{
 			ActivityStatus = $"Crossfading to '{_preloadedProgramItem.Title}'...";
 			return;
+		}
+
+		// If the top item is a projected intro-overlay sweeper (OVL) and a music track follows it,
+		// arm the sweeper to overlay over the incoming music track's intro!
+		if (Queue.Count > 1 && Queue[0].IsSweeperOverlayCue)
+		{
+			_pendingOverlaySweeper = Queue[0].Item;
+			Queue.RemoveAt(0);
 		}
 
 		QueueDisplayItem nextEntry = Queue[0];
@@ -1006,8 +1042,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 		ExportNowPlaying(item);
 
 		HandleProgramTrackStarted(item);
-		RefreshGaplessPreload();
 		UpdateQueueTelemetry();
+		RefreshGaplessPreload();
 		return true;
 	}
 
@@ -1085,6 +1121,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 	{
 		LibraryItem? item = _preloadedProgramItem;
 		_preloadedProgramItem = null;
+
+		// If an intro-overlay sweeper (OVL) sat directly ahead of the preloaded track, consume and arm it!
+		if (Queue.Count > 1 && Queue[0].IsSweeperOverlayCue &&
+			string.Equals(Queue[1].Item.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+		{
+			_pendingOverlaySweeper = Queue[0].Item;
+			Queue.RemoveAt(0);
+		}
 
 		if (Queue.Count > 0 && string.Equals(Queue[0].Item.FilePath, filePath, StringComparison.OrdinalIgnoreCase))
 		{
@@ -1214,7 +1258,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 					}
 					else
 					{
-						Queue.Insert(0, new QueueDisplayItem(id));
+						Queue.Insert(0, new QueueDisplayItem(id, QueueCueRole.StationId, isAutoProjected: true));
 						RefreshGaplessPreload(forceReload: true);
 						if (ProgramPlayer.IsPlaying)
 						{
@@ -1307,16 +1351,33 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 		ActivityStatus = $"Scheduled folder loaded {Queue.Count} tracks ({coverage.TotalMinutes:0} min).";
 	}
 
+	private LibraryItem? GetNextPlayableDeckItem(out int index)
+	{
+		if (Queue.Count == 0)
+		{
+			index = -1;
+			return null;
+		}
+		// An intro-overlay sweeper (OVL) fires on top of the music track directly behind it, so preload that music track!
+		if (Queue.Count > 1 && Queue[0].IsSweeperOverlayCue)
+		{
+			index = 1;
+			return Queue[1].Item;
+		}
+		index = 0;
+		return Queue[0].Item;
+	}
+
 	private void RefreshGaplessPreload(bool forceReload = false)
 	{
-		if (!GaplessPlaybackEnabled || !ProgramPlayer.IsPlaying || Queue.Count == 0)
+		LibraryItem? next = GetNextPlayableDeckItem(out _);
+		if (!GaplessPlaybackEnabled || !ProgramPlayer.IsPlaying || next == null)
 		{
 			ClearGaplessPreload();
 			UpdateTransitionPreviewText();
 			return;
 		}
 
-		LibraryItem next = Queue[0].Item;
 		if (forceReload || _preloadedProgramItem == null || !string.Equals(_preloadedProgramItem.FilePath, next.FilePath, StringComparison.OrdinalIgnoreCase))
 		{
 			if (_audioService.PreloadNext(next))
@@ -1359,6 +1420,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 			try
 			{
 				TryInsertProjectedRadioId();
+				ProjectUpcomingSweepersIntoQueue();
 			}
 			finally
 			{
@@ -1367,16 +1429,150 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 		}
 
 		QueueStatus = Queue.Count == 0 ? "Queue empty" : $"{Queue.Count} queued";
-		TimeSpan total = Queue.Aggregate(TimeSpan.Zero, (acc, q) => acc + (q.Item.Duration > TimeSpan.Zero ? q.Item.Duration : TimeSpan.FromMinutes(3)));
+		TimeSpan total = Queue.Aggregate(TimeSpan.Zero, (acc, q) =>
+			q.IsSweeperOverlayCue ? acc : acc + (q.Item.Duration > TimeSpan.Zero ? q.Item.Duration : TimeSpan.FromMinutes(3)));
 		QueueTotalDurationText = total.TotalHours >= 1.0 ? total.ToString("h\\:mm\\:ss") : total.ToString("m\\:ss");
 
+		GetNextPlayableDeckItem(out int preloadIdx);
 		for (int i = 0; i < Queue.Count; i++)
 		{
-			Queue[i].IsPreloadedNext = i == 0 && _preloadedProgramItem != null;
+			Queue[i].IsPreloadedNext = i == preloadIdx && _preloadedProgramItem != null;
 		}
 
 		RecalculateProjectedQueueAirtimes(DateTime.Now);
 		UpdateAutomationCues();
+	}
+
+	private void ReprojectImagingInQueue()
+	{
+		bool removedAny = false;
+		for (int i = Queue.Count - 1; i >= 0; i--)
+		{
+			if (Queue[i].IsAutoProjectedImaging)
+			{
+				Queue.RemoveAt(i);
+				removedAny = true;
+			}
+		}
+		UpdateQueueTelemetry();
+		if (removedAny || Queue.Count > 0)
+		{
+			PersistQueueSafe();
+			RefreshGaplessPreload(forceReload: true);
+		}
+	}
+
+	/// <summary>
+	/// Walks the Playout Queue and projects every upcoming Sweeper visibly (SWP or OVL)
+	/// respecting Min/Max Songs, Min Time Cooldown, Duration Thresholds, and Adjacent-Imaging Guard —
+	/// completely idempotent so Sweepers are ALWAYS visible in the Playout Queue with zero double-counting.
+	/// </summary>
+	private void ProjectUpcomingSweepersIntoQueue()
+	{
+		if (!SweepersEnabled)
+		{
+			for (int i = Queue.Count - 1; i >= 0; i--)
+			{
+				if (Queue[i].IsAutoProjectedImaging && (Queue[i].IsSweeperCue || Queue[i].IsSweeperOverlayCue))
+				{
+					Queue.RemoveAt(i);
+				}
+			}
+			return;
+		}
+
+		if (Queue.Count == 0) return;
+
+		DateTime now = DateTime.Now;
+		TimeSpan curRem = ProgramPlayer.IsPlaying && ProgramPlayer.Duration > ProgramPlayer.Position
+			? ProgramPlayer.Duration - ProgramPlayer.Position
+			: TimeSpan.Zero;
+		DateTime projectedLocal = now + curRem;
+
+		int songsWalked = _songsSinceSweeper;
+		int targetSongs = Math.Max(1, _songsUntilSweeper);
+		DateTime? lastSwpUtc = _lastSweeperPlayedUtc;
+
+		ActiveRotationInfo activeRot = GetActiveRotationNow();
+		int subMin = Math.Max(1, activeRot.SweeperMinSongsOverride ?? SweeperMinSongs);
+		int subMax = Math.Max(subMin, activeRot.SweeperMaxSongsOverride ?? SweeperMaxSongs);
+		int subsequentInterval = Math.Max(1, (subMin + subMax) / 2);
+
+		bool IsEntryImaging(QueueDisplayItem? entry) =>
+			entry != null &&
+			(entry.IsStationIdCue || entry.IsSweeperCue || entry.IsSweeperOverlayCue || entry.IsCommercialCue ||
+			 ImagingPolicyService.IsImagingOrCommercial(entry.Item, _settings));
+
+		// Case 0: Sweeper is ALREADY due right after the currently playing song (insert at Queue[0])!
+		if (songsWalked >= targetSongs &&
+			!IsEntryImaging(Queue[0]) &&
+			(!SweeperAvoidAdjacentImaging || !ImagingPolicyService.IsImagingOrCommercial(_currentProgramItem, _settings)))
+		{
+			bool cooldownOk = SweeperMinCooldownMinutes <= 0 || !lastSwpUtc.HasValue ||
+							  (projectedLocal.ToUniversalTime() - lastSwpUtc.Value).TotalMinutes >= SweeperMinCooldownMinutes;
+			if (cooldownOk)
+			{
+				LibraryItem? swp = PickEligibleSweeper();
+				if (swp != null)
+				{
+					bool isOverlay = ImagingPolicyService.ShouldPlaySweeperAsOverlay(swp, Queue[0].Item, _settings);
+					Queue.Insert(0, new QueueDisplayItem(swp, isOverlay ? QueueCueRole.SweeperOverlay : QueueCueRole.Sweeper, isAutoProjected: true));
+					songsWalked = 0;
+					lastSwpUtc = projectedLocal.ToUniversalTime();
+					targetSongs = subsequentInterval;
+				}
+			}
+		}
+
+		// Walk remaining queued items and insert projected sweepers across the full queue!
+		for (int i = 0; i < Queue.Count; i++)
+		{
+			QueueDisplayItem entry = Queue[i];
+			if (entry.IsSweeperCue || entry.IsSweeperOverlayCue)
+			{
+				songsWalked = 0;
+				lastSwpUtc = projectedLocal.ToUniversalTime();
+				targetSongs = subsequentInterval;
+				if (!entry.IsSweeperOverlayCue)
+				{
+					projectedLocal += entry.Item.Duration > TimeSpan.Zero ? entry.Item.Duration : TimeSpan.FromSeconds(5);
+				}
+				continue;
+			}
+
+			if (IsEntryImaging(entry))
+			{
+				projectedLocal += entry.Item.Duration > TimeSpan.Zero ? entry.Item.Duration : TimeSpan.FromSeconds(10);
+				continue;
+			}
+
+			songsWalked++;
+			DateTime trackEndLocal = projectedLocal + (entry.Item.Duration > TimeSpan.Zero ? entry.Item.Duration : TimeSpan.FromMinutes(3));
+
+			if (songsWalked >= targetSongs && i + 1 < Queue.Count)
+			{
+				QueueDisplayItem nextEntry = Queue[i + 1];
+				bool adjacentOk = !SweeperAvoidAdjacentImaging || !IsEntryImaging(nextEntry);
+				bool cooldownOk = SweeperMinCooldownMinutes <= 0 || !lastSwpUtc.HasValue ||
+								  (trackEndLocal.ToUniversalTime() - lastSwpUtc.Value).TotalMinutes >= SweeperMinCooldownMinutes;
+
+				if (adjacentOk && cooldownOk)
+				{
+					LibraryItem? swp = PickEligibleSweeper();
+					if (swp != null)
+					{
+						bool isOverlay = ImagingPolicyService.ShouldPlaySweeperAsOverlay(swp, nextEntry.Item, _settings);
+						Queue.Insert(i + 1, new QueueDisplayItem(swp, isOverlay ? QueueCueRole.SweeperOverlay : QueueCueRole.Sweeper, isAutoProjected: true));
+						songsWalked = 0;
+						lastSwpUtc = trackEndLocal.ToUniversalTime();
+						targetSongs = subsequentInterval;
+						i++; // Skip over newly inserted sweeper
+					}
+				}
+			}
+
+			projectedLocal = trackEndLocal;
+		}
 	}
 
 	private void RecalculateProjectedQueueAirtimes(DateTime now)
@@ -1388,25 +1584,31 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 		foreach (QueueDisplayItem entry in Queue)
 		{
 			entry.ProjectedStartText = cursor.ToString("HH:mm:ss");
-			cursor += entry.Item.Duration > TimeSpan.Zero ? entry.Item.Duration : TimeSpan.FromMinutes(3);
+			// Intro-overlay sweepers play ON TOP of the next track's intro so they don't shift airtimes
+			if (!entry.IsSweeperOverlayCue)
+			{
+				cursor += entry.Item.Duration > TimeSpan.Zero ? entry.Item.Duration : TimeSpan.FromMinutes(3);
+			}
 		}
 	}
 
 	private void UpdateAutomationCues()
 	{
-		LibraryItem? next = _preloadedProgramItem ?? Queue.FirstOrDefault()?.Item;
+		LibraryItem? next = _preloadedProgramItem ?? GetNextPlayableDeckItem(out _);
 		NextQueueCue = next == null ? "Up Next: none" : $"{next.Title} ({(_preloadedProgramItem != null ? "preloaded" : "queued")})";
 
 		StationIdDecision idDecision = EvaluateCurrentStationIdDecision(DateTime.Now);
 		RadioIdWindowStatusText = idDecision.StatusSummary;
+		QueueDisplayItem? queuedId = Queue.FirstOrDefault(q => q.IsStationIdCue || IsRadioId(q.Item, RadioIdFolder));
 		NextRadioIdCue = !RadioIdsEnabled
 			? "ID off"
-			: Queue.Any(q => IsRadioId(q.Item, RadioIdFolder))
-				? $"ID queued (:{RadioIdMinute:00})"
+			: queuedId != null
+				? $"ID queued @ {queuedId.ProjectedStartText}"
 				: idDecision.AlreadyServedThisHour
 					? $"ID aired • next {idDecision.TargetTimeLocal:HH:mm}"
 					: $"ID {idDecision.TargetTimeLocal:HH:mm} ({RadioIdEnforcementMode})";
 
+		QueueDisplayItem? queuedSwp = Queue.FirstOrDefault(q => q.IsSweeperCue || q.IsSweeperOverlayCue);
 		string swpModeTag = SweeperPlaybackMode == SweeperPlaybackMode.OverlayOverIntro
 			? "overlay"
 			: SweeperPlaybackMode == SweeperPlaybackMode.SmartAuto
@@ -1414,8 +1616,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 				: "queue";
 		NextSweeperCue = !SweepersEnabled
 			? "Sweepers off"
-			: _pendingOverlaySweeper != null
-				? $"Sweeper overlay ready ({_pendingOverlaySweeper.Title})"
+			: queuedSwp != null
+				? $"SWP @ {queuedSwp.ProjectedStartText} [{(queuedSwp.IsSweeperOverlayCue ? "OVL" : "SWP")}]"
 				: $"Next in {Math.Max(0, _songsUntilSweeper - _songsSinceSweeper)} song(s) [{swpModeTag}]";
 
 		RotationCue = GetActiveRotationNow().Description;
@@ -1430,7 +1632,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 		{
 			LibraryItem? item = PickNextAutomationItem();
 			if (item == null) break;
-			Queue.Add(new QueueDisplayItem(item));
+			QueueCueRole role = item.IsCommercialCue ? QueueCueRole.Commercial : QueueCueRole.None;
+			Queue.Add(new QueueDisplayItem(item, role));
 			if (!ImagingPolicyService.IsImagingOrCommercial(item, _settings))
 			{
 				_autoDjQueuedItems.Add(item);
@@ -1449,13 +1652,14 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
 	private bool ShouldAutoDjAddTrack()
 	{
-		if (Queue.Any(q => IsRadioId(q.Item, RadioIdFolder))) return false;
+		if (Queue.Any(q => q.IsStationIdCue || IsRadioId(q.Item, RadioIdFolder))) return false;
 		if (!AutoDjFillCurrentHour) return Queue.Count < AutoDjQueueDepth;
 
 		DateTime now = DateTime.Now;
 		TimeSpan remHour = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0).AddHours(1) - now;
 		TimeSpan curRem = ProgramPlayer.IsPlaying && ProgramPlayer.Duration > ProgramPlayer.Position ? ProgramPlayer.Duration - ProgramPlayer.Position : TimeSpan.Zero;
-		TimeSpan queueDur = Queue.Aggregate(TimeSpan.Zero, (acc, q) => acc + (q.Item.Duration > TimeSpan.Zero ? q.Item.Duration : TimeSpan.FromMinutes(3)));
+		TimeSpan queueDur = Queue.Aggregate(TimeSpan.Zero, (acc, q) =>
+			q.IsSweeperOverlayCue ? acc : acc + (q.Item.Duration > TimeSpan.Zero ? q.Item.Duration : TimeSpan.FromMinutes(3)));
 		return (curRem + queueDur) < remHour - TimeSpan.FromSeconds(30) && Queue.Count < 35;
 	}
 
@@ -1483,8 +1687,8 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
 	/// <summary>
 	/// Single source of truth called strictly ONCE when a track begins playing on the program deck.
-	/// Eliminates sweeper double-counting, executes intro overlays cleanly, enforces cooldowns &amp;
-	/// adjacent-imaging spacing, and records Station ID service accurately.
+	/// Tracks song cadence accurately, fires armed intro-overlay sweepers, and records Station ID service.
+	/// Upcoming Sweepers and Station IDs are visibly projected in the Playout Queue via UpdateQueueTelemetry().
 	/// </summary>
 	private void HandleProgramTrackStarted(LibraryItem item)
 	{
@@ -1506,7 +1710,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 			return;
 		}
 
-		// Regular music track started: if an overlay sweeper was armed for this incoming intro, fire it now!
+		// Regular music track started: if an intro-overlay sweeper was armed, fire it right over the intro!
 		if (_pendingOverlaySweeper != null)
 		{
 			LibraryItem overlaySwp = _pendingOverlaySweeper;
@@ -1521,44 +1725,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 			}
 		}
 
-		if (!SweepersEnabled) return;
-
-		_songsSinceSweeper++;
-		LibraryItem? nextQueued = Queue.FirstOrDefault()?.Item;
-		StationIdDecision idDecision = EvaluateCurrentStationIdDecision(DateTime.Now);
-		bool stationIdDueSoon = RadioIdsEnabled &&
-								!idDecision.AlreadyServedThisHour &&
-								(idDecision.Action != StationIdActionKind.None ||
-								 Math.Abs((idDecision.WindowStartLocal - DateTime.Now).TotalMinutes) <= 2.5);
-
-		if (!ImagingPolicyService.ShouldTriggerSweeper(
-			_songsSinceSweeper,
-			_songsUntilSweeper,
-			DateTime.UtcNow,
-			_lastSweeperPlayedUtc,
-			_settings,
-			item,
-			nextQueued,
-			stationIdDueSoon))
+		if (SweepersEnabled)
 		{
-			return;
-		}
-
-		LibraryItem? swp = PickEligibleSweeper();
-		if (swp == null) return;
-
-		if (ImagingPolicyService.ShouldPlaySweeperAsOverlay(swp, nextQueued, _settings))
-		{
-			_pendingOverlaySweeper = swp;
-			LogService.Info("Imaging", $"Armed intro-overlay sweeper '{swp.Title}' for upcoming track '{nextQueued?.Title}'");
-		}
-		else
-		{
-			_songsSinceSweeper = 0;
-			_lastSweeperPlayedUtc = DateTime.UtcNow;
-			_songsUntilSweeper = PickSweeperInterval();
-			Queue.Insert(0, new QueueDisplayItem(swp));
-			LogService.Info("Imaging", $"Queued sweeper '{swp.Title}' ({swp.Duration.TotalSeconds:0.0}s) next");
+			_songsSinceSweeper++;
 		}
 	}
 
@@ -1573,7 +1742,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 			lastServed,
 			_settings,
 			curRem,
-			Queue.Select(q => q.Item).ToList(),
+			Queue.Where(q => !q.IsSweeperOverlayCue).Select(q => q.Item).ToList(),
 			item => IsRadioId(item, RadioIdFolder));
 	}
 
@@ -1584,19 +1753,39 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 		StationIdDecision decision = EvaluateCurrentStationIdDecision(localNow);
 		RadioIdWindowStatusText = decision.StatusSummary;
 
-		if (!RadioIdsEnabled || decision.Action == StationIdActionKind.None)
+		if (!RadioIdsEnabled)
+		{
+			for (int i = Queue.Count - 1; i >= 0; i--)
+			{
+				if (Queue[i].IsAutoProjectedImaging && Queue[i].IsStationIdCue) Queue.RemoveAt(i);
+			}
+			return false;
+		}
+
+		if (decision.Action == StationIdActionKind.None)
 		{
 			return false;
 		}
 
 		if (decision.Action == StationIdActionKind.InsertIntoQueue)
 		{
+			if (Queue.Any(q => q.IsStationIdCue || IsRadioId(q.Item, RadioIdFolder))) return false;
 			LibraryItem? id = PickEligibleRadioId();
 			if (id == null) return false;
-			int idx = Math.Clamp(decision.InsertIndex, 0, Queue.Count);
-			Queue.Insert(idx, new QueueDisplayItem(id));
-			if (idx == 0) RefreshGaplessPreload(forceReload: true);
-			LogService.Info("Imaging", $"Scheduled Station ID '{id.Title}' at queue slot #{idx + 1} for {decision.TargetTimeLocal:HH:mm} window.");
+
+			// Map index from non-overlay list back into full Queue index
+			int targetNonOverlay = Math.Max(0, decision.InsertIndex);
+			int actualIdx = 0;
+			int nonOverlaySeen = 0;
+			while (actualIdx < Queue.Count && nonOverlaySeen < targetNonOverlay)
+			{
+				if (!Queue[actualIdx].IsSweeperOverlayCue) nonOverlaySeen++;
+				actualIdx++;
+			}
+
+			Queue.Insert(actualIdx, new QueueDisplayItem(id, QueueCueRole.StationId, isAutoProjected: true));
+			if (actualIdx == 0) RefreshGaplessPreload(forceReload: true);
+			LogService.Info("Imaging", $"Scheduled Station ID '{id.Title}' at queue slot #{actualIdx + 1} for {decision.TargetTimeLocal:HH:mm} window.");
 			return true;
 		}
 
@@ -1629,10 +1818,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 			// Remove any already-queued Station ID further down so it doesn't double-play
 			for (int i = Queue.Count - 1; i >= 0; i--)
 			{
-				if (IsRadioId(Queue[i].Item, RadioIdFolder)) Queue.RemoveAt(i);
+				if (Queue[i].IsStationIdCue || IsRadioId(Queue[i].Item, RadioIdFolder)) Queue.RemoveAt(i);
 			}
 
-			Queue.Insert(0, new QueueDisplayItem(id));
+			Queue.Insert(0, new QueueDisplayItem(id, QueueCueRole.StationId, isAutoProjected: true));
 			RefreshGaplessPreload(forceReload: true);
 			if (ProgramPlayer.IsPlaying)
 			{

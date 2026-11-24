@@ -288,34 +288,56 @@ public static class ImagingPolicyService
 				$"Queuing ID next for {target:HH:mm} window ({windowText})");
 		}
 
-		// Otherwise scan projected queue track boundaries to find the closest transition inside [winStart, winEnd]
+		// Otherwise scan projected queue track boundaries to find the closest transition inside [winStart, winEnd],
+		// AND track any single long song that straddles across [winStart, winEnd] so Station IDs never vanish!
 		int bestIdx = -1;
 		double bestDistanceSec = double.MaxValue;
+		int straddleIdx = -1;
+		double straddleDistanceSec = double.MaxValue;
+
 		for (int i = 0; i < queue.Count; i++)
 		{
+			DateTime trackStart = cursor;
 			TimeSpan dur = queue[i].Duration > TimeSpan.Zero ? queue[i].Duration : TimeSpan.FromMinutes(3);
-			cursor += dur;
-			if (cursor >= winStart && cursor <= winEnd)
+			DateTime trackEnd = trackStart + dur;
+			cursor = trackEnd;
+
+			if (trackEnd >= winStart && trackEnd <= winEnd)
 			{
-				double dist = Math.Abs((cursor - target).TotalSeconds);
+				double dist = Math.Abs((trackEnd - target).TotalSeconds);
 				if (dist < bestDistanceSec)
 				{
 					bestDistanceSec = dist;
 					bestIdx = i + 1;
 				}
 			}
+			else if (trackStart < winStart && trackEnd > winEnd)
+			{
+				// Long track spans completely across the window (e.g. 11:53:54 -> 12:03:52 across 11:57-12:03).
+				// Pick whichever boundary (before track = i, or after track = i+1) is closest to target!
+				double distBefore = Math.Abs((trackStart - target).TotalSeconds);
+				double distAfter = Math.Abs((trackEnd - target).TotalSeconds);
+				int candidateIdx = distBefore <= distAfter ? i : i + 1;
+				double candidateDist = Math.Min(distBefore, distAfter);
+				if (candidateDist < straddleDistanceSec)
+				{
+					straddleDistanceSec = candidateDist;
+					straddleIdx = candidateIdx;
+				}
+			}
 		}
 
-		if (bestIdx >= 0)
+		int chosenIdx = bestIdx >= 0 ? bestIdx : straddleIdx;
+		if (chosenIdx >= 0)
 		{
 			return new StationIdDecision(
 				StationIdActionKind.InsertIntoQueue,
-				bestIdx,
+				chosenIdx,
 				target,
 				winStart,
 				winEnd,
 				false,
-				$"Projected ID at slot #{bestIdx + 1} for {target:HH:mm} ({windowText})");
+				$"Projected ID at slot #{chosenIdx + 1} for {target:HH:mm} ({windowText})");
 		}
 
 		// If we're ALREADY inside the window right now and current track ends AFTER winEnd:

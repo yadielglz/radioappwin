@@ -181,6 +181,31 @@ public class RotationAndImagingTests
 			queue,
 			IsId);
 		Assert.Equal(StationIdActionKind.None, d4.Action);
+
+		// 5. Long song straddling right across a tight tolerance window (11:53:54 -> 12:03:52 across 11:57..12:03)
+		// Must still project Station ID at the boundary closest to 12:00 (after the song at 12:03:52 vs before at 11:53:54)!
+		var tightSettings = new AppSettings
+		{
+			RadioIdsEnabled = true,
+			RadioIdMinute = 0,
+			RadioIdToleranceBeforeMinutes = 3,
+			RadioIdToleranceAfterMinutes = 3,
+			RadioIdEnforcementMode = StationIdEnforcementMode.QueueInWindow
+		};
+		var straddleQueue = new List<LibraryItem>
+		{
+			MakeItem(10, "La Distancia", "A", "Music", "", 214, "/m/10.mp3"),
+			MakeItem(11, "Sonido Bestial", "B", "Music", "", 598, "/m/11.mp3") // 9m58s spanning 11:53:54 -> 12:03:52
+		};
+		StationIdDecision d5 = ImagingPolicyService.EvaluateStationId(
+			new DateTime(2026, 11, 24, 11, 49, 0),
+			null,
+			tightSettings,
+			TimeSpan.FromSeconds(80), // current ends 11:50:20 -> La Distancia ends 11:53:54 -> Sonido Bestial ends 12:03:52
+			straddleQueue,
+			IsId);
+		Assert.Equal(StationIdActionKind.InsertIntoQueue, d5.Action);
+		Assert.Equal(2, d5.InsertIndex); // 12:03:52 is closer to 12:00 than 11:53:54
 	}
 
 	[Fact]
