@@ -516,6 +516,17 @@ public sealed class AutoMixSampleProvider : ISampleProvider
 				mixL = (oLowL * lowOutGain + iLowL * lowInGain) + (oHighL * highOutGain + iHighL * highInGain);
 				mixR = (oLowR * lowOutGain + iLowR * lowInGain) + (oHighR * highOutGain + iHighR * highInGain);
 			}
+			else if (plan.FullPunchIncoming)
+			{
+				// Broadcast FM sweep curve: incoming sweeper or next song enters at full presence
+				// over a click-free ~25ms ramp while the outgoing tail glides smoothly down to zero.
+				int rampFrames = Math.Clamp((int)(SampleRate * 0.025), 16, Math.Max(16, total / 3));
+				double inProgress = Math.Clamp((double)(completed + f) / rampFrames, 0.0, 1.0);
+				float gIn = (float)Math.Sin(inProgress * Math.PI * 0.5);
+				float gOut = (float)Math.Cos(p * Math.PI * 0.5);
+				mixL = oL * gOut + iL * gIn;
+				mixR = oR * gOut + iR * gIn;
+			}
 			else
 			{
 				ComputeCurveGains(plan.Curve, p, out float gOut, out float gIn);

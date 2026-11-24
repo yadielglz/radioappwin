@@ -39,6 +39,7 @@ public sealed class AudioPlaybackService : IDisposable
 	private bool _failedOverDueToRdpDisconnect;
 	private bool _manualStop;
 	private bool _disposed;
+	private AppSettings? _latestSettings;
 	private DeckPlaybackState _state = DeckPlaybackState.Stopped;
 
 	// PFL Audition Player
@@ -157,6 +158,7 @@ public sealed class AudioPlaybackService : IDisposable
 
 	public void ApplyAudioSettings(AppSettings settings, TransitionMode? playsetModeOverride = null)
 	{
+		_latestSettings = settings;
 		_pflDeviceNumber = settings.PflOutputDeviceNumber;
 		_autoFallbackToHeadless = settings.AutoFallbackToHeadlessClock;
 		_cloudUnattendedMode = settings.CloudUnattendedModeEnabled;
@@ -554,7 +556,8 @@ public sealed class AudioPlaybackService : IDisposable
 		{
 			item.Duration = reader.TotalTime;
 		}
-		TrackCueSnapshot cue = TrackCueSnapshot.FromLibraryItem(item);
+		string effectiveCategory = ImagingPolicyService.ResolveEffectiveCategory(item, _latestSettings);
+		TrackCueSnapshot cue = TrackCueSnapshot.FromLibraryItem(item, effectiveCategory);
 		return new ManagedTrackStream(
 			cue,
 			stereo,

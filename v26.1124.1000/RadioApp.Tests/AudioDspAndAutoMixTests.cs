@@ -384,6 +384,43 @@ public class AudioDspAndAutoMixTests
 		Assert.True(releasedPeak > 0.38f, $"Program should recover after cart ends, got {releasedPeak}");
 	}
 
+	[Fact]
+	public void AutoMixSampleProvider_SongToSweeper_PreservesFullSongDurationWithFullPunchEntry()
+	{
+		// 10s rhythmic song (AutoMixOutMs at 3.5s = -6.5s early) -> 4s sweeper
+		float[] songData = GenerateSineStereo(10.0, 220.0, 0.4f);
+		float[] sweeperData = GenerateSineStereo(4.0, 880.0, 0.5f);
+		var pSong = new SyntheticStereoProvider(songData);
+		var pSwp = new SyntheticStereoProvider(sweeperData);
+
+		var cueSong = new TrackCueSnapshot("song.wav", "Music", TimeSpan.FromSeconds(10), null, null, null, null,
+			0, 3500, 10000, 120.0, 0.9, 0, 3500, -14.0, -1.0, TrackEdgeProfile.Ramp, TrackEdgeProfile.Rhythmic, 0, 0);
+		var cueSwp = new TrackCueSnapshot("swp.wav", "Sweeper", TimeSpan.FromSeconds(4), null, null, null, null,
+			0, 3000, 4000, null, null, null, null, -14.0, -1.0, TrackEdgeProfile.Cold, TrackEdgeProfile.Fade, 0, 0);
+
+		var autoMix = new AutoMixSampleProvider();
+		autoMix.UpdateSettings(TransitionSettings.FromAppSettings(new AppSettings
+		{
+			TransitionMode = TransitionMode.AutoMix,
+			GaplessPlaybackEnabled = true
+		}));
+
+		TransitionPlan? executedPlan = null;
+		autoMix.PreloadedTrackStarted += (_, plan) => executedPlan = plan;
+
+		autoMix.SetCurrent(new ManagedTrackStream(cueSong, pSong, seekAction: pSong.Seek));
+		autoMix.SetNext(new ManagedTrackStream(cueSwp, pSwp, seekAction: pSwp.Seek));
+
+		int totalSamples = DrainAndVerifyClean(autoMix);
+		double totalSec = totalSamples / (2.0 * 44100.0);
+
+		Assert.NotNull(executedPlan);
+		Assert.Equal("SweeperEntry", executedPlan!.AppliedStrategy);
+		Assert.True(executedPlan.FullPunchIncoming);
+		// Full 10s song + 4s sweeper minus only ~0.25s end-kiss = ~13.75s (NOT 7.5s!)
+		Assert.InRange(totalSec, 13.5, 14.0);
+	}
+
 	private static int DrainAndVerifyClean(ISampleProvider provider)
 	{
 		float[] buf = new float[2048];

@@ -69,11 +69,15 @@ public sealed record TrackCueSnapshot(
 		}
 	}
 
-	public static TrackCueSnapshot FromLibraryItem(LibraryItem item)
+	public static TrackCueSnapshot FromLibraryItem(LibraryItem item, string? effectiveCategoryOverride = null)
 	{
+		string effectiveCategory = !string.IsNullOrWhiteSpace(effectiveCategoryOverride)
+			? effectiveCategoryOverride
+			: item.Category;
+
 		return new TrackCueSnapshot(
 			item.FilePath,
-			item.Category,
+			effectiveCategory,
 			item.Duration,
 			item.StartCueMs,
 			item.IntroCueMs,
@@ -139,7 +143,8 @@ public sealed record TransitionPlan(
 	double TempoGlideBackSeconds,
 	bool UseBassSwapEq,
 	double BassSwapHz,
-	string HumanSummary);
+	string HumanSummary,
+	bool FullPunchIncoming = false);
 
 /// <summary>
 /// Apple Music-grade AutoMix & Broadcast Transition Planner.
@@ -158,7 +163,6 @@ public static class TransitionPlanner
 	{
 		TimeSpan incomingStart = incoming.EffectiveStart;
 		TimeSpan outgoingEnd = outgoing.EffectiveEnd;
-		TimeSpan outgoingMixOut = outgoing.EffectiveMixOut;
 
 		// 1. Live manual skip: always perform a smooth, click-free micro-crossfade immediately
 		if (isManualSkip)
@@ -247,23 +251,7 @@ public static class TransitionPlanner
 
 		if (outgoing.IsSweeper || incoming.IsSweeper)
 		{
-			// Tight energetic broadcast segue into/out of a Sweeper/Jingle
-			double fadeSec = ClampFadeToTracks(0.55, outgoing, incoming);
-			TimeSpan anchor = outgoing.IsSweeper ? outgoingEnd : outgoingMixOut;
-			TimeSpan start = ClampMixStart(anchor - TimeSpan.FromSeconds(fadeSec * 0.6), outgoing);
-			return new TransitionPlan(
-				"SweeperSegue",
-				start,
-				incomingStart,
-				TimeSpan.FromSeconds(fadeSec),
-				CrossfadeCurve.EqualPower,
-				false,
-				1.0,
-				1.0,
-				0.0,
-				false,
-				settings.BassSwapHz,
-				$"Sweeper Segue • {fadeSec:0.0}s");
+			return BuildBroadcastSweeperPlan(outgoing, incoming, settings);
 		}
 
 		// 5. Classic Fixed Crossfade mode
@@ -320,6 +308,181 @@ public static class TransitionPlanner
 		}
 
 		return AudioTrackAnalyzer.DbToLinear(deltaDb);
+	}
+
+	/// <summary>
+	/// Broadcast FM radio sweeper transition planner:
+	/// 1) Song -&gt; Sweeper: ALWAYS lets the song finish naturally (never chops rhythmic songs 6.5s early
+	///    at AutoMixOutMs!). Cold/Rhythmic endings play all the way to EffectiveEnd with a tight micro-kiss;
+	///    genuine Fade endings glide into the sweeper only inside the final quiet fade tail.
+	/// 2) Sweeper -&gt; Next Song: Intelligently sweeps the sweeper's trailing reverb/SFX tail into the next song's
+	///    intro based on BOTH the sweeper's outro tail and the incoming song's intro profile (Ramp/Fade/Rhythmic vs Cold),
+	///    while protecting the sweeper's spoken voice and launching the next song at full musical punch.
+	/// </summary>
+	private static TransitionPlan BuildBroadcastSweeperPlan(
+		TrackCueSnapshot outgoing,
+		TrackCueSnapshot incoming,
+		TransitionSettings settings)
+	{
+		TimeSpan incomingStart = incoming.EffectiveStart;
+		TimeSpan outgoingEnd = outgoing.EffectiveEnd;
+
+		// Case 1: Song -> Sweeper (LET THE SONG FINISH!)
+		if (!outgoing.IsSweeper && incoming.IsSweeper)
+		{
+			double sweeperDur = Math.Max(0.2, (incoming.EffectiveEnd - incoming.EffectiveStart).TotalSeconds);
+
+			// 1A. Respect explicit operator-set manual Outro cue if present
+			if (outgoing.OutroCueMs.HasValue)
+			{
+				TimeSpan manualAnchor = ClampMixStart(TimeSpan.FromMilliseconds(outgoing.OutroCueMs.Value), outgoing);
+				double remainingSec = Math.Max(0.15, (outgoingEnd - manualAnchor).TotalSeconds);
+				double fadeSec = ClampFadeToTracks(Math.Min(remainingSec, Math.Min(1.20, sweeperDur * 0.25)), outgoing, incoming);
+				return new TransitionPlan(
+					"SweeperEntry",
+					manualAnchor,
+					incomingStart,
+					TimeSpan.FromSeconds(fadeSec),
+					CrossfadeCurve.EqualPower,
+					false,
+					1.0,
+					1.0,
+					0.0,
+					false,
+					settings.BassSwapHz,
+					$"Cue Outro → Sweeper • {fadeSec:0.0}s",
+					FullPunchIncoming: true);
+			}
+
+			// 1B. Confirmed gradual Fade-out tail: glide sweeper in ONLY near the end of the fade tail
+			if (outgoing.OutroProfile == TrackEdgeProfile.Fade)
+			{
+				double fadeTailSec = Math.Max(0.0, (outgoingEnd - outgoing.EffectiveMixOut).TotalSeconds);
+				if (fadeTailSec >= 0.80)
+				{
+					double desiredTailOverlap = Math.Clamp(fadeTailSec * 0.45, 0.70, 1.40);
+					double safeCap = Math.Min(fadeTailSec, Math.Min(desiredTailOverlap, Math.Max(0.25, sweeperDur * 0.25)));
+					double fadeSec = ClampFadeToTracks(safeCap, outgoing, incoming);
+					TimeSpan start = ClampMixStart(outgoingEnd - TimeSpan.FromSeconds(fadeSec), outgoing);
+					return new TransitionPlan(
+						"SweeperEntry",
+						start,
+						incomingStart,
+						TimeSpan.FromSeconds(fadeSec),
+						CrossfadeCurve.EqualPower,
+						false,
+						1.0,
+						1.0,
+						0.0,
+						false,
+						settings.BassSwapHz,
+						$"Fade Finish → Sweeper • {fadeSec:0.0}s",
+						FullPunchIncoming: true);
+				}
+			}
+
+			// 1C. Cold, Rhythmic, or Unknown ending (Salsa, Pop, Dance, Cold hits):
+			// NEVER anchor on AutoMixOutMs (-6.5s)! Play the song ALL THE WAY to EffectiveEnd!
+			double endKissSec = outgoing.OutroProfile == TrackEdgeProfile.Cold ? 0.15 : 0.25;
+			double tightFadeSec = ClampFadeToTracks(endKissSec, outgoing, incoming);
+			TimeSpan finishStart = ClampMixStart(outgoingEnd - TimeSpan.FromSeconds(tightFadeSec), outgoing);
+			return new TransitionPlan(
+				"SweeperEntry",
+				finishStart,
+				incomingStart,
+				TimeSpan.FromSeconds(tightFadeSec),
+				CrossfadeCurve.EqualPower,
+				false,
+				1.0,
+				1.0,
+				0.0,
+				false,
+				settings.BassSwapHz,
+				$"Song Finish → Sweeper • {tightFadeSec:0.00}s",
+				FullPunchIncoming: true);
+		}
+
+		// Case 2: Sweeper -> Next Song (INTELLIGENT RADIO SWEEP!)
+		if (outgoing.IsSweeper && !incoming.IsSweeper)
+		{
+			double sweeperDur = Math.Max(0.2, (outgoingEnd - outgoing.EffectiveStart).TotalSeconds);
+			bool incomingIsColdStart = incoming.IntroProfile == TrackEdgeProfile.Cold && (incoming.IntroCueMs ?? 0) < 1500;
+			bool incomingHasLongRamp = (incoming.IntroCueMs ?? 0) >= 2500 ||
+									   incoming.IntroProfile is TrackEdgeProfile.Ramp or TrackEdgeProfile.Fade;
+
+			double desiredSweepSec;
+			if (outgoing.OutroCueMs.HasValue)
+			{
+				desiredSweepSec = Math.Clamp((outgoingEnd - TimeSpan.FromMilliseconds(outgoing.OutroCueMs.Value)).TotalSeconds, 0.15, 2.50);
+			}
+			else if (incomingIsColdStart)
+			{
+				// Next song starts immediately with vocals or a hard hit — crisp broadcast punch at the very end!
+				desiredSweepSec = outgoing.OutroProfile == TrackEdgeProfile.Fade ? 0.30 : 0.20;
+			}
+			else if (outgoing.OutroProfile == TrackEdgeProfile.Cold)
+			{
+				// Dry voice sweeper with no reverb tail — let the last syllable clear before launching the song
+				desiredSweepSec = incomingHasLongRamp ? 0.38 : 0.25;
+			}
+			else if (outgoing.OutroProfile == TrackEdgeProfile.Fade)
+			{
+				// Produced FM sweeper with reverb/SFX tail — sweep its tail right over the next song's intro!
+				desiredSweepSec = incomingHasLongRamp ? 1.25 : 0.90;
+				double measuredTailSec = Math.Max(0.0, (outgoingEnd - outgoing.EffectiveMixOut).TotalSeconds);
+				if (measuredTailSec >= 0.35)
+				{
+					desiredSweepSec = Math.Min(desiredSweepSec, Math.Max(0.65, measuredTailSec));
+				}
+			}
+			else
+			{
+				// Rhythmic or Unknown sweeper outro
+				desiredSweepSec = incomingHasLongRamp ? 0.95 : 0.65;
+			}
+
+			// Never step on the sweeper's spoken voice on shorter sweepers
+			double maxSweeperFraction = outgoing.OutroProfile == TrackEdgeProfile.Fade ? 0.25 : 0.22;
+			double maxSweeperSec = Math.Max(0.15, sweeperDur * maxSweeperFraction);
+			double fadeSec = ClampFadeToTracks(Math.Min(desiredSweepSec, maxSweeperSec), outgoing, incoming);
+			TimeSpan start = ClampMixStart(outgoingEnd - TimeSpan.FromSeconds(fadeSec), outgoing);
+			string label = incomingIsColdStart
+				? $"Radio Punch → Song • {fadeSec:0.00}s"
+				: $"Radio Sweep → Song • {fadeSec:0.0}s";
+
+			return new TransitionPlan(
+				"SweeperSweepOut",
+				start,
+				incomingStart,
+				TimeSpan.FromSeconds(fadeSec),
+				CrossfadeCurve.EqualPower,
+				false,
+				1.0,
+				1.0,
+				0.0,
+				false,
+				settings.BassSwapHz,
+				label,
+				FullPunchIncoming: true);
+		}
+
+		// Case 3: Sweeper -> Sweeper back-to-back
+		double backToBackSec = ClampFadeToTracks(0.20, outgoing, incoming);
+		TimeSpan backToBackStart = ClampMixStart(outgoingEnd - TimeSpan.FromSeconds(backToBackSec), outgoing);
+		return new TransitionPlan(
+			"SweeperSegue",
+			backToBackStart,
+			incomingStart,
+			TimeSpan.FromSeconds(backToBackSec),
+			CrossfadeCurve.EqualPower,
+			false,
+			1.0,
+			1.0,
+			0.0,
+			false,
+			settings.BassSwapHz,
+			$"Sweeper Segue • {backToBackSec:0.00}s",
+			FullPunchIncoming: true);
 	}
 
 	private static bool TryBuildBeatMatchedAutoMix(

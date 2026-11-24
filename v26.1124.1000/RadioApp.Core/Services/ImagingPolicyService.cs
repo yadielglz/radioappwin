@@ -375,6 +375,30 @@ public static class ImagingPolicyService
 			   MatchesFolderOrCategory(item, settings.RadioIdFolder, idCats);
 	}
 
+	/// <summary>
+	/// Resolves the effective broadcast category for audio transition planning, honoring
+	/// configured Sweeper and Station ID folders/categories even when a file was indexed as "Music".
+	/// </summary>
+	public static string ResolveEffectiveCategory(LibraryItem item, AppSettings? settings)
+	{
+		if (settings != null)
+		{
+			string[] idCats = ParseCategoryList(settings.RadioIdCategoryNames, "StationId", "Station ID", "ID");
+			if (item.IsStationIdCue || MatchesFolderOrCategory(item, settings.RadioIdFolder, idCats))
+			{
+				return "StationId";
+			}
+
+			string[] swpCats = ParseCategoryList(settings.SweeperCategoryNames, "Sweeper", "Sweep", "Jingle");
+			if (item.IsSweeperCue || MatchesFolderOrCategory(item, settings.SweeperFolder, swpCats))
+			{
+				return "Sweeper";
+			}
+		}
+
+		return item.Category;
+	}
+
 	private static string NormalizeFolder(string folder)
 	{
 		string trimmed = folder.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
