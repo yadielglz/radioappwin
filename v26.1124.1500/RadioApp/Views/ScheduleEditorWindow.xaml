@@ -1,0 +1,126 @@
+<Window x:Class="RadioApp.Views.ScheduleEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Schedule Event — RadioApp Studio"
+        Width="660" Height="640" MinWidth="580" MinHeight="560" ResizeMode="CanResizeWithGrip" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource AppBackgroundBrush}">
+  <Grid Margin="18">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="8" Padding="14 10" Margin="0 0 0 14">
+      <StackPanel>
+        <TextBlock Text="SCHEDULE EVENT CONFIGURATION" FontSize="15" FontWeight="Bold" Foreground="{StaticResource PrimaryGlowBrush}" />
+        <TextBlock Text="Trigger a Playset, audio folder block, or single track at a scheduled time" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0 2 0 0" />
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="8" Padding="16">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <Grid Margin="0 0 0 12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="135" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Event Title" Style="{StaticResource LabelStyle}" />
+            <TextBox Grid.Column="1" Text="{Binding ScheduleItem.Title, Mode=TwoWay}" />
+          </Grid>
+
+          <Grid Margin="0 0 0 12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="135" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Event Type" Style="{StaticResource LabelStyle}" />
+            <ComboBox Grid.Column="1" x:Name="EventTypeComboBox" SelectedItem="{Binding ScheduleItem.EventType, Mode=TwoWay}" />
+          </Grid>
+
+          <Grid Margin="0 0 0 12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="135" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Target Playset" Style="{StaticResource LabelStyle}" />
+            <ComboBox Grid.Column="1" x:Name="PlaysetComboBox" DisplayMemberPath="Name" SelectedValuePath="Id" SelectedValue="{Binding ScheduleItem.PlaysetId, Mode=TwoWay}" />
+          </Grid>
+
+          <Grid Margin="0 0 0 12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="135" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="File / Folder Source" Style="{StaticResource LabelStyle}" />
+            <TextBox Grid.Column="1" x:Name="SourcePathBox" Text="{Binding ScheduleItem.FilePath, Mode=TwoWay}" />
+            <Button Grid.Column="2" Content="File..." Style="{StaticResource SecondaryButtonStyle}" Margin="8 0 0 0" Click="BrowseFile_Click" />
+            <Button Grid.Column="3" Content="Folder..." Style="{StaticResource SecondaryButtonStyle}" Margin="6 0 0 0" Click="BrowseFolder_Click" />
+          </Grid>
+
+          <Grid Margin="0 0 0 12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="135" />
+              <ColumnDefinition Width="155" />
+              <ColumnDefinition Width="100" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Schedule Date" Style="{StaticResource LabelStyle}" />
+            <DatePicker Grid.Column="1" SelectedDate="{Binding SelectedDate, Mode=TwoWay}" />
+            <TextBlock Grid.Column="2" Text="Time (HH:mm)" Style="{StaticResource LabelStyle}" HorizontalAlignment="Right" />
+            <TextBox Grid.Column="3" Width="90" HorizontalAlignment="Left" Text="{Binding ScheduleTime, Mode=TwoWay}" />
+          </Grid>
+
+          <Grid Margin="0 0 0 12">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="135" />
+              <ColumnDefinition Width="155" />
+              <ColumnDefinition Width="100" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Recurrence" Style="{StaticResource LabelStyle}" />
+            <ComboBox Grid.Column="1" x:Name="RepeatModeComboBox" SelectedItem="{Binding ScheduleItem.RepeatMode, Mode=TwoWay}" />
+            <TextBlock Grid.Column="2" Text="Interval (min)" Style="{StaticResource LabelStyle}" HorizontalAlignment="Right" />
+            <TextBox Grid.Column="3" Width="90" HorizontalAlignment="Left" Text="{Binding RepeatMinutes, Mode=TwoWay}" />
+          </Grid>
+
+          <Grid Margin="0 0 0 14">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="135" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="70" />
+              <ColumnDefinition Width="Auto" />
+              <ColumnDefinition Width="70" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Timing Tolerance" Style="{StaticResource LabelStyle}" />
+            <TextBlock Grid.Column="1" Text="Early (min)" Style="{StaticResource LabelStyle}" />
+            <TextBox Grid.Column="2" Text="{Binding ToleranceBeforeMinutes, Mode=TwoWay}" />
+            <TextBlock Grid.Column="3" Text="Late (min)" Style="{StaticResource LabelStyle}" Margin="14 0 8 0" />
+            <TextBox Grid.Column="4" Text="{Binding ToleranceAfterMinutes, Mode=TwoWay}" />
+          </Grid>
+
+          <Separator Background="{StaticResource BorderBrushSoft}" Margin="0 0 0 14" />
+
+          <StackPanel Orientation="Horizontal" Margin="135 0 0 12">
+            <CheckBox Content="Main Program Priority (interrupt &amp; crossfade now)" IsChecked="{Binding ScheduleItem.IsMain, Mode=TwoWay}" Margin="0 0 18 0" />
+            <CheckBox Content="Enabled" IsChecked="{Binding ScheduleItem.Enabled, Mode=TwoWay}" />
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Margin="135 0 0 0">
+            <CheckBox Content="Folder block source" IsChecked="{Binding ScheduleItem.IsFolderSource, Mode=TwoWay}" Margin="0 0 16 0" />
+            <TextBlock Text="Block Duration (min):" Style="{StaticResource LabelStyle}" />
+            <TextBox Width="70" Text="{Binding BlockDurationMinutes, Mode=TwoWay}" />
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 14 0 0">
+      <Button Content="Save Event" Style="{StaticResource PrimaryActionButtonStyle}" Width="120" Margin="0 0 8 0" Click="Save_Click" />
+      <Button Content="Cancel" Style="{StaticResource SecondaryButtonStyle}" Width="90" Click="Cancel_Click" />
+    </StackPanel>
+  </Grid>
+</Window>
