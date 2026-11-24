@@ -57,6 +57,16 @@ public class AppSettingsService
 			persisted.StreamPasswordEncrypted = string.Empty;
 		}
 
+		if (!string.IsNullOrEmpty(persisted.GitUpdateToken))
+		{
+			persisted.GitUpdateTokenEncrypted = SecretProtector.Protect(persisted.GitUpdateToken);
+			persisted.GitUpdateToken = string.Empty;
+		}
+		else
+		{
+			persisted.GitUpdateTokenEncrypted = string.Empty;
+		}
+
 		string json = JsonSerializer.Serialize(persisted, _jsonOptions);
 		string temporaryPath = _settingsPath + ".tmp";
 		string backupPath = _settingsPath + ".bak";
@@ -76,6 +86,8 @@ public class AppSettingsService
 		AppSettings exportCopy = settings.DeepClone();
 		exportCopy.StreamPassword = string.Empty;
 		exportCopy.StreamPasswordEncrypted = string.Empty;
+		exportCopy.GitUpdateToken = string.Empty;
+		exportCopy.GitUpdateTokenEncrypted = string.Empty;
 		File.WriteAllText(targetPath, JsonSerializer.Serialize(exportCopy, _jsonOptions));
 	}
 
@@ -98,6 +110,14 @@ public class AppSettingsService
 			if (!string.IsNullOrEmpty(decrypted))
 			{
 				settings.StreamPassword = decrypted;
+			}
+		}
+		if (!string.IsNullOrEmpty(settings.GitUpdateTokenEncrypted))
+		{
+			string decryptedToken = SecretProtector.Unprotect(settings.GitUpdateTokenEncrypted);
+			if (!string.IsNullOrEmpty(decryptedToken))
+			{
+				settings.GitUpdateToken = decryptedToken;
 			}
 		}
 	}

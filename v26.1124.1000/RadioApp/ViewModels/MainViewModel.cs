@@ -398,6 +398,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
 	// Git / GitHub Self-Updater Properties
 	public string GitUpdateRepository { get => _settings.GitUpdateRepository; set { string v = string.IsNullOrWhiteSpace(value) ? AppVersionInfo.DefaultGitHubRepository : value.Trim(); if (_settings.GitUpdateRepository != v) { _settings.GitUpdateRepository = v; OnPropertyChanged(); SaveSettingsSafe(); } } }
+	public string GitUpdateToken { get => _settings.GitUpdateToken; set { string v = (value ?? string.Empty).Trim(); if (_settings.GitUpdateToken != v) { _settings.GitUpdateToken = v; OnPropertyChanged(); SaveSettingsSafe(); } } }
 	public bool AutoCheckForUpdatesOnStartup { get => _settings.AutoCheckForUpdatesOnStartup; set { if (_settings.AutoCheckForUpdatesOnStartup != value) { _settings.AutoCheckForUpdatesOnStartup = value; OnPropertyChanged(); SaveSettingsSafe(); } } }
 	public string LocalGitRepoPath { get => _settings.LocalGitRepoPath; set { if (_settings.LocalGitRepoPath != (value ?? string.Empty)) { _settings.LocalGitRepoPath = value ?? string.Empty; OnPropertyChanged(); SaveSettingsSafe(); } } }
 
@@ -2637,7 +2638,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
 		try
 		{
-			UpdateCheckResult result = await _updateService.CheckForGitHubUpdateAsync(GitUpdateRepository);
+			UpdateCheckResult result = await _updateService.CheckForGitHubUpdateAsync(GitUpdateRepository, GitUpdateToken);
 			_latestUpdateResult = result;
 			UpdateAvailable = result.UpdateAvailable;
 			LatestRemoteVersionText = $"v{result.LatestVersion}";
@@ -2695,7 +2696,7 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 				UpdateStatusText = p.StatusText;
 			});
 
-			string downloadedFile = await _updateService.DownloadAssetAsync(asset, progress);
+			string downloadedFile = await _updateService.DownloadAssetAsync(asset, progress, GitUpdateToken);
 			PersistQueueSafe();
 			SaveSettingsSafe();
 

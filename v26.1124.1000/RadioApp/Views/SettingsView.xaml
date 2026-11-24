@@ -1018,11 +1018,20 @@
                   <TextBlock Text="GitHub Repository (owner/repo)" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
                   <TextBox Text="{Binding GitUpdateRepository, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                 </StackPanel>
-                <StackPanel VerticalAlignment="Bottom">
-                  <CheckBox Content="Check for GitHub updates automatically on startup"
-                            IsChecked="{Binding AutoCheckForUpdatesOnStartup, Mode=TwoWay}" Margin="0 0 0 6" />
+                <StackPanel>
+                  <DockPanel Margin="0 0 0 4">
+                    <TextBlock Text="GitHub Token (Private Repo — DPAPI)" Style="{StaticResource LabelStyle}" />
+                    <CheckBox x:Name="ShowGitTokenToggle" DockPanel.Dock="Right" Content="Show" FontSize="11" Checked="ShowGitToken_Changed" Unchecked="ShowGitToken_Changed" />
+                  </DockPanel>
+                  <PasswordBox x:Name="GitTokenBox" PasswordChanged="GitTokenBox_PasswordChanged"
+                               ToolTip="Required for private repos (fine-grained PAT with Contents: Read-only). Auto-detects GITHUB_TOKEN or 'gh auth login' if left blank." />
+                  <TextBox x:Name="GitTokenPlainBox" Visibility="Collapsed" Text="{Binding GitUpdateToken, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                           ToolTip="Fine-grained PAT with Contents: Read-only" />
                 </StackPanel>
               </UniformGrid>
+
+              <CheckBox Content="Check for GitHub updates automatically on startup (auto-uses saved token, GITHUB_TOKEN env var, or 'gh' CLI login)"
+                        IsChecked="{Binding AutoCheckForUpdatesOnStartup, Mode=TwoWay}" Margin="0 0 0 10" />
 
               <Border Background="{StaticResource PanelAltBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0 0 0 10">
                 <StackPanel>

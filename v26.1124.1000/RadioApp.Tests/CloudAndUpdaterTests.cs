@@ -205,4 +205,56 @@ public class CloudAndUpdaterTests
 		Assert.Equal(AppVersionInfo.DefaultGitHubRepository, settings.GitUpdateRepository);
 		Assert.Equal("26.1124.1000", AppVersionInfo.Version);
 	}
+
+	[Fact]
+	public void GitUpdateService_ParsesPrivateAssetApiUrl_AndAppSettingsProtectsGitToken()
+	{
+		string json = """
+		[
+		  {
+		    "tag_name": "v26.1124.1000",
+		    "name": "Private Release",
+		    "draft": false,
+		    "assets": [
+		      {
+		        "name": "RadioApp-26.1124.1000-Win64-Setup.msi",
+		        "url": "https://api.github.com/repos/yadielglz/radioappwin/releases/assets/999",
+		        "browser_download_url": "https://github.com/yadielglz/radioappwin/releases/download/v26.1124.1000/RadioApp-26.1124.1000-Win64-Setup.msi",
+		        "size": 69000000,
+		        "content_type": "application/x-msdownload"
+		      }
+		    ]
+		  }
+		]
+		""";
+
+		UpdateCheckResult res = GitUpdateService.ParseReleasesJson(json, "26.1123.1000");
+		Assert.True(res.Success);
+		Assert.NotNull(res.MsiAsset);
+		Assert.Equal("https://api.github.com/repos/yadielglz/radioappwin/releases/assets/999", res.MsiAsset!.ApiUrl);
+
+		string tmpSettings = Path.Combine(Path.GetTempPath(), $"radioapp-token-test-{Guid.NewGuid():N}.json");
+		string tmpBackup = tmpSettings + ".export.json";
+		try
+		{
+			var svc = new AppSettingsService(tmpSettings);
+			var s = new AppSettings { GitUpdateToken = "github_pat_secret_12345" };
+			svc.Save(s);
+
+			string rawDisk = File.ReadAllText(tmpSettings);
+			Assert.DoesNotContain("github_pat_secret_12345", rawDisk);
+
+			AppSettings reloaded = svc.Load();
+			Assert.Equal("github_pat_secret_12345", reloaded.GitUpdateToken);
+
+			svc.ExportBackup(reloaded, tmpBackup);
+			string rawBackup = File.ReadAllText(tmpBackup);
+			Assert.DoesNotContain("github_pat_secret_12345", rawBackup);
+		}
+		finally
+		{
+			try { File.Delete(tmpSettings); } catch { }
+			try { File.Delete(tmpBackup); } catch { }
+		}
+	}
 }

@@ -17,7 +17,8 @@ public sealed record GitHubReleaseAssetInfo(
 	string Name,
 	string DownloadUrl,
 	long SizeBytes,
-	string ContentType);
+	string ContentType,
+	string ApiUrl = "");
 
 public sealed record UpdateCheckResult(
 	bool Success,
@@ -49,8 +50,8 @@ public sealed record LocalGitSyncResult(
 	string Summary);
 
 /// <summary>
-/// Fetches updates from GitHub Releases (MSI / Portable ZIP download & install)
-/// and also supports direct git fetch/pull when running inside a local Git checkout.
+/// Fetches updates from GitHub Releases (both public and private repos via PAT / GITHUB_TOKEN / gh CLI)
+/// and supports direct git fetch/pull when running inside a local Git checkout.
 /// </summary>
 public sealed class GitUpdateService
 {
@@ -105,8 +106,61 @@ public sealed class GitUpdateService
 		return cand > cur;
 	}
 
+	/// <summary>
+	/// Resolves a GitHub token in priority order:
+	/// 1. Explicitly configured PAT from Settings (DPAPI encrypted)
+	/// 2. Environment variable GITHUB_TOKEN or GH_TOKEN
+	/// 3. Signed-in GitHub CLI (`gh auth token`) if installed on the Cloud PC
+	/// </summary>
+	public static async Task<string?> ResolveEffectiveTokenAsync(string? configuredToken, CancellationToken ct = default)
+	{
+		if (!string.IsNullOrWhiteSpace(configuredToken))
+		{
+			return configuredToken.Trim();
+		}
+
+		string? envToken = Environment.GetEnvironmentVariable("GITHUB_TOKEN")
+						?? Environment.GetEnvironmentVariable("GH_TOKEN");
+		if (!string.IsNullOrWhiteSpace(envToken))
+		{
+			return envToken.Trim();
+		}
+
+		try
+		{
+			using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+			cts.CancelAfter(TimeSpan.FromSeconds(2));
+			using var proc = new Process
+			{
+				StartInfo = new ProcessStartInfo
+				{
+					FileName = "gh",
+					Arguments = "auth token",
+					RedirectStandardOutput = true,
+					RedirectStandardError = true,
+					UseShellExecute = false,
+					CreateNoWindow = true
+				}
+			};
+			proc.Start();
+			string output = await proc.StandardOutput.ReadToEndAsync(cts.Token).ConfigureAwait(false);
+			await proc.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+			if (proc.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+			{
+				return output.Trim();
+			}
+		}
+		catch
+		{
+			// gh CLI not installed or not authenticated — fall back to unauthenticated request
+		}
+
+		return null;
+	}
+
 	public async Task<UpdateCheckResult> CheckForGitHubUpdateAsync(
 		string repository,
+		string? configuredToken = null,
 		string? currentVersionOverride = null,
 		CancellationToken ct = default)
 	{
@@ -119,12 +173,30 @@ public sealed class GitUpdateService
 
 		try
 		{
+			string? token = await ResolveEffectiveTokenAsync(configuredToken, ct).ConfigureAwait(false);
 			string apiUrl = $"https://api.github.com/repos/{repo}/releases?per_page=15";
 			using HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, apiUrl);
+			req.Headers.Add("X-GitHub-Api-Version", "2022-11-28");
+			if (!string.IsNullOrWhiteSpace(token))
+			{
+				req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+			}
+
 			using HttpResponseMessage resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
 			if (!resp.IsSuccessStatusCode)
 			{
-				return FailedCheck(currentVersion, $"GitHub API returned HTTP {(int)resp.StatusCode} ({resp.ReasonPhrase}).");
+				int code = (int)resp.StatusCode;
+				if (code == 404 && string.IsNullOrWhiteSpace(token))
+				{
+					return FailedCheck(currentVersion,
+						$"GitHub returned 404 (Private repo). Enter a read-only GitHub Personal Access Token below (Contents: Read), or sign in with 'gh auth login' on this PC.");
+				}
+				if (code == 401 || code == 403)
+				{
+					return FailedCheck(currentVersion,
+						$"GitHub authentication failed (HTTP {code}). Check that your GitHub Token is valid and has 'Contents: Read-only' permission for {repo}.");
+				}
+				return FailedCheck(currentVersion, $"GitHub API returned HTTP {code} ({resp.ReasonPhrase}).");
 			}
 
 			string json = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
@@ -170,11 +242,12 @@ public sealed class GitUpdateService
 				{
 					string name = a.TryGetProperty("name", out JsonElement an) ? (an.GetString() ?? string.Empty) : string.Empty;
 					string url = a.TryGetProperty("browser_download_url", out JsonElement au) ? (au.GetString() ?? string.Empty) : string.Empty;
+					string apiUrl = a.TryGetProperty("url", out JsonElement aapi) ? (aapi.GetString() ?? string.Empty) : string.Empty;
 					long size = a.TryGetProperty("size", out JsonElement asz) && asz.TryGetInt64(out long s) ? s : 0;
 					string ctype = a.TryGetProperty("content_type", out JsonElement ac) ? (ac.GetString() ?? string.Empty) : string.Empty;
-					if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(url))
+					if (!string.IsNullOrWhiteSpace(name) && (!string.IsNullOrWhiteSpace(url) || !string.IsNullOrWhiteSpace(apiUrl)))
 					{
-						assets.Add(new GitHubReleaseAssetInfo(name, url, size, ctype));
+						assets.Add(new GitHubReleaseAssetInfo(name, url, size, ctype, apiUrl));
 					}
 				}
 			}
@@ -223,6 +296,7 @@ public sealed class GitUpdateService
 	public async Task<string> DownloadAssetAsync(
 		GitHubReleaseAssetInfo asset,
 		IProgress<UpdateDownloadProgress>? progress = null,
+		string? configuredToken = null,
 		CancellationToken ct = default)
 	{
 		string updatesDir = Path.Combine(
@@ -237,7 +311,19 @@ public sealed class GitUpdateService
 
 		progress?.Report(new UpdateDownloadProgress(0, asset.SizeBytes, 0, $"Connecting to GitHub for {safeFileName}..."));
 
-		using HttpResponseMessage response = await _http.GetAsync(asset.DownloadUrl, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+		string? token = await ResolveEffectiveTokenAsync(configuredToken, ct).ConfigureAwait(false);
+		bool usePrivateAssetApi = !string.IsNullOrWhiteSpace(token) && !string.IsNullOrWhiteSpace(asset.ApiUrl);
+		string targetUrl = usePrivateAssetApi ? asset.ApiUrl : asset.DownloadUrl;
+
+		using HttpRequestMessage req = new HttpRequestMessage(HttpMethod.Get, targetUrl);
+		if (usePrivateAssetApi)
+		{
+			req.Headers.Accept.Clear();
+			req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
+			req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+		}
+
+		using HttpResponseMessage response = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
 		response.EnsureSuccessStatusCode();
 
 		long totalBytes = response.Content.Headers.ContentLength ?? asset.SizeBytes;

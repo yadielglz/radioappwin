@@ -21,6 +21,8 @@ public class AppSettings
 
 	// Git / GitHub Self-Updater
 	public string GitUpdateRepository { get; set; } = AppVersionInfo.DefaultGitHubRepository;
+	public string GitUpdateToken { get; set; } = string.Empty;
+	public string GitUpdateTokenEncrypted { get; set; } = string.Empty;
 	public bool AutoCheckForUpdatesOnStartup { get; set; } = true;
 	public string LocalGitRepoPath { get; set; } = string.Empty;
 

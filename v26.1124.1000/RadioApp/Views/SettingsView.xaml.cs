@@ -20,6 +20,7 @@ public partial class SettingsView : UserControl
 		{
 			_syncingPassword = true;
 			StreamPasswordBox.Password = main.StreamConfig.Password ?? string.Empty;
+			GitTokenBox.Password = main.GitUpdateToken ?? string.Empty;
 			_syncingPassword = false;
 		}
 	}
@@ -51,6 +52,36 @@ public partial class SettingsView : UserControl
 			_syncingPassword = false;
 			StreamPasswordPlainBox.Visibility = Visibility.Collapsed;
 			StreamPasswordBox.Visibility = Visibility.Visible;
+		}
+	}
+
+	private void GitTokenBox_PasswordChanged(object sender, RoutedEventArgs e)
+	{
+		if (_syncingPassword) return;
+		if (DataContext is MainViewModel main)
+		{
+			main.GitUpdateToken = GitTokenBox.Password;
+		}
+	}
+
+	private void ShowGitToken_Changed(object sender, RoutedEventArgs e)
+	{
+		bool show = ShowGitTokenToggle.IsChecked == true;
+		if (show)
+		{
+			GitTokenBox.Visibility = Visibility.Collapsed;
+			GitTokenPlainBox.Visibility = Visibility.Visible;
+		}
+		else
+		{
+			_syncingPassword = true;
+			if (DataContext is MainViewModel main)
+			{
+				GitTokenBox.Password = main.GitUpdateToken ?? string.Empty;
+			}
+			_syncingPassword = false;
+			GitTokenPlainBox.Visibility = Visibility.Collapsed;
+			GitTokenBox.Visibility = Visibility.Visible;
 		}
 	}
 }
