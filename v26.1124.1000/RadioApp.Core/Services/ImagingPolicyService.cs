@@ -25,8 +25,9 @@ public static class ImagingPolicyService
 		if (!string.IsNullOrWhiteSpace(folderPath))
 		{
 			string normFolder = NormalizeFolder(folderPath);
+			string normItem = NormalizePathSeparators(item.FilePath ?? string.Empty);
 			if (!string.IsNullOrEmpty(normFolder) &&
-				item.FilePath.StartsWith(normFolder, StringComparison.OrdinalIgnoreCase))
+				normItem.StartsWith(normFolder, StringComparison.OrdinalIgnoreCase))
 			{
 				return true;
 			}
@@ -399,9 +400,12 @@ public static class ImagingPolicyService
 		return item.Category;
 	}
 
+	private static string NormalizePathSeparators(string path) =>
+		path.Trim().Replace('\\', '/');
+
 	private static string NormalizeFolder(string folder)
 	{
-		string trimmed = folder.Trim().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-		return string.IsNullOrEmpty(trimmed) ? string.Empty : trimmed + Path.DirectorySeparatorChar;
+		string trimmed = NormalizePathSeparators(folder).TrimEnd('/');
+		return string.IsNullOrEmpty(trimmed) ? string.Empty : trimmed + "/";
 	}
 }
