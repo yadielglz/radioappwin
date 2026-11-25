@@ -1,4 +1,4 @@
-name: Build RadioApp Studio 26.1124.1500 (Windows 10/11 x64)
+name: Build RadioApp Studio 26.1125.1200 (Windows 10/11 x64)
 
 on:
   workflow_dispatch:
@@ -6,9 +6,9 @@ on:
     branches:
       - main
     tags:
-      - 'v26.1124.1500*'
+      - 'v26.1125.1200*'
     paths:
-      - 'v26.1124.1500/**'
+      - 'v26.1125.1200/**'
       - '.config/dotnet-tools.json'
       - '.github/workflows/build-win10-11.yml'
 
@@ -33,57 +33,57 @@ jobs:
         run: dotnet tool restore
 
       - name: Run Unit & DSP Tests
-        run: dotnet test v26.1124.1500/RadioApp.Tests/RadioApp.Tests.csproj -c Release --verbosity normal
+        run: dotnet test v26.1125.1200/RadioApp.Tests/RadioApp.Tests.csproj -c Release --verbosity normal
 
       - name: Publish Windows 10/11 x64 Application
         shell: pwsh
         run: |
-          dotnet publish v26.1124.1500/RadioApp/RadioApp.csproj `
+          dotnet publish v26.1125.1200/RadioApp/RadioApp.csproj `
             -c Release `
             -r win-x64 `
             --self-contained true `
-            -o v26.1124.1500/publish
+            -o v26.1125.1200/publish
 
       - name: Verify Executable
         shell: pwsh
         run: |
-          if (!(Test-Path 'v26.1124.1500/publish/RadioApp.exe')) {
+          if (!(Test-Path 'v26.1125.1200/publish/RadioApp.exe')) {
             throw 'RadioApp.exe was not produced.'
           }
 
       - name: Build Windows 10/11 MSI
         shell: pwsh
-        working-directory: v26.1124.1500/Installer
+        working-directory: v26.1125.1200/Installer
         run: |
           dotnet wix build Product.wxs `
             -arch x64 `
             -bindpath . `
-            -o ../../RadioApp-26.1124.1500-Win64-Setup.msi
+            -o ../../RadioApp-26.1125.1200-Win64-Setup.msi
 
       - name: Package Portable ZIP
         shell: pwsh
         run: |
           Compress-Archive `
-            -Path 'v26.1124.1500/publish/*' `
-            -DestinationPath 'RadioApp-26.1124.1500-Win64-Portable.zip' `
+            -Path 'v26.1125.1200/publish/*' `
+            -DestinationPath 'RadioApp-26.1125.1200-Win64-Portable.zip' `
             -Force
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: RadioApp-26.1124.1500-Win64
+          name: RadioApp-26.1125.1200-Win64
           path: |
-            RadioApp-26.1124.1500-Win64-Setup.msi
-            RadioApp-26.1124.1500-Win64-Portable.zip
+            RadioApp-26.1125.1200-Win64-Setup.msi
+            RadioApp-26.1125.1200-Win64-Portable.zip
           if-no-files-found: error
 
       - name: Publish GitHub Release on Tag
-        if: startsWith(github.ref, 'refs/tags/v26.1124.1500')
+        if: startsWith(github.ref, 'refs/tags/v26.1125.1200')
         uses: softprops/action-gh-release@v2
         with:
-          name: RadioApp Studio 26.1124.1500 (Windows 10/11 x64)
+          name: RadioApp Studio 26.1125.1200 (Windows 10/11 x64)
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           files: |
-            RadioApp-26.1124.1500-Win64-Setup.msi
-            RadioApp-26.1124.1500-Win64-Portable.zip
+            RadioApp-26.1125.1200-Win64-Setup.msi
+            RadioApp-26.1125.1200-Win64-Portable.zip

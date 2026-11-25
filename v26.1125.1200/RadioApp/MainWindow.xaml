@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="RadioApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:RadioApp.Views"
+        Title="{Binding WindowTitle}"
+        Icon="Assets/RadioAppIcon.ico"
+        Height="860" Width="1420"
+        MinHeight="700" MinWidth="1060"
+        WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="Window_PreviewKeyDown">
+  <DockPanel Background="{StaticResource AppBackgroundBrush}">
+    <!-- Compact Top Menu Bar -->
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem Header="_Import Audio Files..." Command="{Binding Library.ImportTrackCommand}" />
+        <MenuItem Header="Import _Folder..." Command="{Binding Library.ImportFolderCommand}" />
+        <MenuItem Header="Import _Playlist / Playset (.m3u8)..." Command="{Binding Library.ImportPlaylistFileCommand}" />
+        <Separator Background="{StaticResource BorderBrushSoft}" />
+        <MenuItem Header="_Pop Out Library Window (Dual Monitor)" Click="PopOutLibrary_Click" />
+        <MenuItem Header="Pop Out _Schedule Window" Click="PopOutSchedule_Click" />
+        <Separator Background="{StaticResource BorderBrushSoft}" />
+        <MenuItem Header="E_xit RadioApp Studio" Click="Exit_Click" />
+      </MenuItem>
+      <MenuItem Header="_Playback">
+        <MenuItem Header="_Play / Pause (Space)" Command="{Binding ProgramPlayer.PlayPauseToggleCommand}" />
+        <MenuItem Header="Smooth _Mix Next (Ctrl+Right)" Command="{Binding PlayNextCommand}" />
+        <MenuItem Header="_Auto-Pick Track" Command="{Binding EnqueueRandomCommand}" />
+        <MenuItem Header="Stop All _Cartwall Overlays" Command="{Binding StopAllOverlaysCommand}" />
+        <Separator Background="{StaticResource BorderBrushSoft}" />
+        <MenuItem Header="Mute Local Studio _Monitor (Ctrl+M)" Command="{Binding ToggleMonitorMuteCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Workspace">
+        <MenuItem Header="1. Studio _Console (Ctrl+1)" Command="{Binding SwitchWorkspaceCommand}" CommandParameter="0" />
+        <MenuItem Header="2. _Library &amp; Playsets (Ctrl+2)" Command="{Binding SwitchWorkspaceCommand}" CommandParameter="1" />
+        <MenuItem Header="3. _Schedule &amp; Clocks (Ctrl+3)" Command="{Binding SwitchWorkspaceCommand}" CommandParameter="2" />
+        <MenuItem Header="4. Studio _Settings (Ctrl+4)" Command="{Binding SwitchWorkspaceCommand}" CommandParameter="3" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem Header="_Check for Updates from GitHub..." Command="{Binding OpenUpdatesSettingsCommand}" />
+        <MenuItem Header="Open Diagnostics _Logs" Command="{Binding OpenLogsFolderCommand}" />
+        <MenuItem Header="_About RadioApp Studio" Click="About_Click" />
+      </MenuItem>
+    </Menu>
+
+    <!-- UNIFIED TOP STUDIO TELEMETRY & NAVIGATION BAR -->
+    <Border DockPanel.Dock="Top" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="0 0 0 1" Padding="14 8">
+      <DockPanel>
+        <!-- Left Brand & Version -->
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center" Margin="0 0 16 0">
+          <Image Source="Assets/RadioAppLogo.png" Width="32" Height="32" Margin="0 0 10 0" RenderOptions.BitmapScalingMode="HighQuality" />
+          <StackPanel VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock Text="RADIOAPP STUDIO" FontSize="15" FontWeight="ExtraBold" Foreground="{StaticResource PrimaryGlowBrush}" />
+              <Border Background="#1E293B" CornerRadius="4" Padding="6 1" Margin="8 0 0 0" VerticalAlignment="Center">
+                <TextBlock Text="{Binding AppVersionText}" FontSize="10" FontFamily="Consolas" FontWeight="Bold" Foreground="{StaticResource MutedTextBrush}" />
+              </Border>
+              <Border Background="#1D1236" BorderBrush="{StaticResource PurpleCartBrush}" BorderThickness="1" CornerRadius="4" Padding="6 1" Margin="6 0 0 0" VerticalAlignment="Center"
+                      Visibility="{Binding IsHeadlessClockActive, Converter={StaticResource BoolToVisibilityConverter}}"
+                      ToolTip="Running on precision software Cloud Broadcast Clock — completely immune to RDP disconnects">
+                <TextBlock Text="CLOUD CLOCK" FontSize="9" FontWeight="ExtraBold" Foreground="#E9D5FF" />
+              </Border>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0 1 0 0">
+              <TextBlock Text="{Binding WallClockText}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondaryBrush}" />
+              <TextBlock Text="  •  TOH " FontSize="11" Foreground="{StaticResource MutedTextBrush}" />
+              <TextBlock Text="{Binding TopOfHourCountdownText}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" Foreground="{StaticResource WarningAmberBrush}" />
+            </StackPanel>
+          </StackPanel>
+        </StackPanel>
+
+        <!-- Right Quick Toggles, Update Pill & Clickable ON AIR Stream Pill -->
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+          <Button Content="Update Ready" Style="{StaticResource PrimaryActionButtonStyle}" MinHeight="28" Padding="10 2" FontSize="11" Margin="0 0 10 0"
+                  Visibility="{Binding UpdateAvailable, Converter={StaticResource BoolToVisibilityConverter}}"
+                  Command="{Binding OpenUpdatesSettingsCommand}"
+                  ToolTip="A newer release is available on GitHub — click to view and install" />
+          <CheckBox Content="Auto-DJ" IsChecked="{Binding AutoScheduleEnabled, Mode=TwoWay}" Margin="0 0 12 0" FontWeight="SemiBold" />
+          <CheckBox Content="AutoMix" IsChecked="{Binding GaplessPlaybackEnabled, Mode=TwoWay}" Margin="0 0 14 0" FontWeight="SemiBold" />
+
+          <Button Command="{Binding ToggleStreamCommand}" MinHeight="34" Padding="12 4" ToolTip="Click to Connect or Disconnect Live Broadcast Stream">
+            <Button.Style>
+              <Style TargetType="{x:Type Button}" BasedOn="{StaticResource SecondaryButtonStyle}">
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding IsStreamLive}" Value="True">
+                    <Setter Property="Background" Value="{StaticResource LiveGreenSoftBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource LiveGreenBrush}" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Button.Style>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <Ellipse Width="9" Height="9" Margin="0 0 8 0">
+                <Ellipse.Style>
+                  <Style TargetType="{x:Type Ellipse}">
+                    <Setter Property="Fill" Value="{StaticResource MutedTextBrush}" />
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsStreamLive}" Value="True">
+                        <Setter Property="Fill" Value="{StaticResource LiveGreenGlowBrush}" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </Ellipse.Style>
+              </Ellipse>
+              <TextBlock Text="{Binding StreamStatus}" FontSize="12" FontWeight="Bold" Foreground="#FFFFFF" MaxWidth="230" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+
+        <!-- Center Workspace Tabs -->
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <RadioButton GroupName="WorkspaceNav" Style="{StaticResource WorkspaceNavTabStyle}" Margin="0 0 4 0"
+                       IsChecked="{Binding SelectedWorkspaceIndex, Converter={StaticResource EqualityToBoolConverter}, ConverterParameter=0, Mode=TwoWay}">
+            <StackPanel Orientation="Horizontal">
+              <Path Data="{StaticResource IconBroadcast}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Width="14" Height="14" Stretch="Uniform" Margin="0 0 7 0" />
+              <TextBlock Text="Console" />
+            </StackPanel>
+          </RadioButton>
+
+          <RadioButton GroupName="WorkspaceNav" Style="{StaticResource WorkspaceNavTabStyle}" Margin="0 0 4 0"
+                       IsChecked="{Binding SelectedWorkspaceIndex, Converter={StaticResource EqualityToBoolConverter}, ConverterParameter=1, Mode=TwoWay}">
+            <StackPanel Orientation="Horizontal">
+              <Path Data="{StaticResource IconPlayset}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Width="14" Height="14" Stretch="Uniform" Margin="0 0 7 0" />
+              <TextBlock Text="Library &amp; Playsets" />
+            </StackPanel>
+          </RadioButton>
+
+          <RadioButton GroupName="WorkspaceNav" Style="{StaticResource WorkspaceNavTabStyle}" Margin="0 0 4 0"
+                       IsChecked="{Binding SelectedWorkspaceIndex, Converter={StaticResource EqualityToBoolConverter}, ConverterParameter=2, Mode=TwoWay}">
+            <StackPanel Orientation="Horizontal">
+              <Path Data="{StaticResource IconSchedule}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Width="14" Height="14" Stretch="Uniform" Margin="0 0 7 0" />
+              <TextBlock Text="Schedule" />
+            </StackPanel>
+          </RadioButton>
+
+          <RadioButton GroupName="WorkspaceNav" Style="{StaticResource WorkspaceNavTabStyle}"
+                       IsChecked="{Binding SelectedWorkspaceIndex, Converter={StaticResource EqualityToBoolConverter}, ConverterParameter=3, Mode=TwoWay}">
+            <StackPanel Orientation="Horizontal">
+              <Path Data="{StaticResource IconSettings}" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" Width="14" Height="14" Stretch="Uniform" Margin="0 0 7 0" />
+              <TextBlock Text="Settings" />
+            </StackPanel>
+          </RadioButton>
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- ACTIVE WORKSPACE CONTENT HOST -->
+    <Grid>
+      <views:ConsoleView>
+        <views:ConsoleView.Style>
+          <Style TargetType="{x:Type UserControl}">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding SelectedWorkspaceIndex}" Value="0">
+                <Setter Property="Visibility" Value="Visible" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </views:ConsoleView.Style>
+      </views:ConsoleView>
+
+      <views:LibraryPlaysetsView>
+        <views:LibraryPlaysetsView.Style>
+          <Style TargetType="{x:Type UserControl}">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding SelectedWorkspaceIndex}" Value="1">
+                <Setter Property="Visibility" Value="Visible" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </views:LibraryPlaysetsView.Style>
+      </views:LibraryPlaysetsView>
+
+      <views:ScheduleView>
+        <views:ScheduleView.Style>
+          <Style TargetType="{x:Type UserControl}">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding SelectedWorkspaceIndex}" Value="2">
+                <Setter Property="Visibility" Value="Visible" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </views:ScheduleView.Style>
+      </views:ScheduleView>
+
+      <views:SettingsView>
+        <views:SettingsView.Style>
+          <Style TargetType="{x:Type UserControl}">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Style.Triggers>
+              <DataTrigger Binding="{Binding SelectedWorkspaceIndex}" Value="3">
+                <Setter Property="Visibility" Value="Visible" />
+              </DataTrigger>
+            </Style.Triggers>
+          </Style>
+        </views:SettingsView.Style>
+      </views:SettingsView>
+    </Grid>
+  </DockPanel>
+</Window>

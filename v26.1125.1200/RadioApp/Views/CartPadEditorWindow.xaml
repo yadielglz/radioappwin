@@ -1,0 +1,89 @@
+<Window x:Class="RadioApp.Views.CartPadEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Configure Cartwall Pad — RadioApp Studio"
+        Width="520" SizeToContent="Height" ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        Background="{StaticResource AppBackgroundBrush}">
+  <Grid Margin="20">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Background="{StaticResource PanelBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="8" Padding="14 10" Margin="0 0 0 14">
+      <StackPanel>
+        <TextBlock Text="{Binding Pad.Hotkey, StringFormat='CARTWALL PAD [{0}] CONFIGURATION'}" FontSize="15" FontWeight="Bold" Foreground="{StaticResource PurpleCartBrush}" />
+        <TextBlock Text="Assign an instant audio drop, jingle, station ID, or sound effect that mixes directly to air" Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0 2 0 0" />
+      </StackPanel>
+    </Border>
+
+    <StackPanel Grid.Row="1">
+      <Grid Margin="0 0 0 12">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="2*" />
+          <ColumnDefinition Width="12" />
+          <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <StackPanel Grid.Column="0">
+          <TextBlock Text="Pad Label" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
+          <TextBox Text="{Binding Pad.Label, Mode=TwoWay}" />
+        </StackPanel>
+        <StackPanel Grid.Column="2">
+          <TextBlock Text="Pad Color" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
+          <ComboBox SelectedValuePath="Tag" SelectedValue="{Binding Pad.ColorHex, Mode=TwoWay}">
+            <ComboBoxItem Content="Broadcast Blue" Tag="#0284C7" />
+            <ComboBoxItem Content="Cart Purple" Tag="#8B5CF6" />
+            <ComboBoxItem Content="Deep Violet" Tag="#7C3AED" />
+            <ComboBoxItem Content="Hot Pink" Tag="#EC4899" />
+            <ComboBoxItem Content="Amber Gold" Tag="#F59E0B" />
+            <ComboBoxItem Content="Emerald Live" Tag="#10B981" />
+            <ComboBoxItem Content="Cyan" Tag="#06B6D4" />
+            <ComboBoxItem Content="Crimson" Tag="#EF4444" />
+          </ComboBox>
+        </StackPanel>
+      </Grid>
+
+      <TextBlock Text="Audio File" Style="{StaticResource LabelStyle}" Margin="0 0 0 4" />
+      <Grid Margin="0 0 0 14">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBox x:Name="FilePathBox" Text="{Binding Pad.FilePath, Mode=TwoWay}" />
+        <Button Grid.Column="1" Content="Browse..." Style="{StaticResource SecondaryButtonStyle}" Margin="8 0 0 0" Click="Browse_Click" />
+        <Button Grid.Column="2" Content="Clear" Style="{StaticResource DangerButtonStyle}" Margin="6 0 0 0" Click="Clear_Click" />
+      </Grid>
+
+      <CheckBox Content="Auto-duck on-air music while this cart pad plays" IsChecked="{Binding Pad.DuckMusic, Mode=TwoWay}" Margin="0 0 10 0" />
+
+      <Grid Margin="0 12 0 6">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="120" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="60" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="Music Ducking:" Style="{StaticResource LabelStyle}" />
+        <Slider Grid.Column="1" Minimum="-20" Maximum="-3" Value="{Binding Pad.DuckDb, Mode=TwoWay}" />
+        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Foreground="{StaticResource PrimaryGlowBrush}" Text="{Binding Pad.DuckDb, StringFormat='{}{0:0} dB'}" />
+      </Grid>
+
+      <Grid Margin="0 6 0 0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="120" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="60" />
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="Pad Gain:" Style="{StaticResource LabelStyle}" />
+        <Slider Grid.Column="1" Minimum="0.1" Maximum="1.5" Value="{Binding Pad.Volume, Mode=TwoWay}" />
+        <TextBlock Grid.Column="2" HorizontalAlignment="Right" Foreground="{StaticResource PrimaryGlowBrush}" Text="{Binding Pad.Volume, StringFormat='{}{0:P0}'}" />
+      </Grid>
+    </StackPanel>
+
+    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 18 0 0">
+      <Button Content="Save Pad" Style="{StaticResource PrimaryActionButtonStyle}" Width="110" Margin="0 0 8 0" Click="Save_Click" />
+      <Button Content="Cancel" Style="{StaticResource SecondaryButtonStyle}" Width="90" Click="Cancel_Click" />
+    </StackPanel>
+  </Grid>
+</Window>

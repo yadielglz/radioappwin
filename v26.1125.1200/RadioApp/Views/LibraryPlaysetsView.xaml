@@ -1,0 +1,313 @@
+<UserControl x:Class="RadioApp.Views.LibraryPlaysetsView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="clr-namespace:RadioApp.Controls"
+             AllowDrop="True"
+             Drop="UserControl_Drop"
+             DragOver="UserControl_DragOver">
+  <Grid Margin="14">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition Width="248" />
+      <ColumnDefinition Width="12" />
+      <ColumnDefinition Width="*" />
+      <ColumnDefinition Width="12" />
+      <ColumnDefinition Width="288" />
+    </Grid.ColumnDefinitions>
+
+    <!-- LEFT SIDEBAR: VIEWS & PLAYSETS -->
+    <Border Grid.Column="0" Style="{StaticResource PanelBorderStyle}">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="LIBRARY &amp; PLAYSETS" FontSize="13" FontWeight="ExtraBold" Foreground="{StaticResource PrimaryGlowBrush}" Margin="0 0 0 10" />
+
+        <!-- Quick All-Tracks Button -->
+        <Button Grid.Row="1" HorizontalContentAlignment="Left" Style="{StaticResource SecondaryButtonStyle}" Margin="0 0 0 10" Command="{Binding Library.ShowAllTracksCommand}">
+          <DockPanel LastChildFill="True">
+            <TextBlock DockPanel.Dock="Right" Text="{Binding Library.TotalItemCount, StringFormat='{}{0:N0}'}" FontFamily="Consolas" Foreground="{StaticResource PrimaryGlowBrush}" />
+            <TextBlock Text="All Library Tracks" FontWeight="SemiBold" />
+          </DockPanel>
+        </Button>
+
+        <!-- Playsets Header & Create Buttons -->
+        <StackPanel Grid.Row="2" Margin="0 0 0 8">
+          <DockPanel Margin="0 0 0 6">
+            <TextBlock Text="PLAYSETS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" />
+            <Button DockPanel.Dock="Right" Content="Import M3U" Style="{StaticResource SecondaryButtonStyle}" MinHeight="22" Padding="8 2" FontSize="10" Command="{Binding Library.ImportPlaylistFileCommand}" />
+          </DockPanel>
+          <UniformGrid Columns="2">
+            <Button Content="+ Manual Set" Style="{StaticResource PrimaryActionButtonStyle}" MinHeight="28" Padding="6 3" FontSize="11" Margin="0 0 4 0" Command="{Binding Library.CreateManualPlaysetCommand}" />
+            <Button Content="+ Smart Set" Style="{StaticResource SecondaryButtonStyle}" MinHeight="28" Padding="6 3" FontSize="11" Margin="4 0 0 0" Command="{Binding Library.CreateSmartPlaysetCommand}" />
+          </UniformGrid>
+        </StackPanel>
+
+        <!-- Playsets List -->
+        <ListBox Grid.Row="3" ItemsSource="{Binding Library.Playsets}" SelectedItem="{Binding Library.SelectedPlayset, Mode=TwoWay}">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Border Background="{StaticResource PanelAltBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="7" Padding="9 7" Margin="0 0 0 6">
+                <Grid>
+                  <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                  </Grid.RowDefinitions>
+                  <DockPanel>
+                    <Border DockPanel.Dock="Right" Background="{Binding AccentColor, Converter={StaticResource HexColorToBrushConverter}}" CornerRadius="4" Padding="5 1">
+                      <TextBlock Text="{Binding KindLabel}" FontSize="9" FontWeight="ExtraBold" Foreground="#FFFFFF" />
+                    </Border>
+                    <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="12" TextTrimming="CharacterEllipsis" />
+                  </DockPanel>
+                  <TextBlock Grid.Row="1" Text="{Binding SummaryText}" FontSize="11" Foreground="{StaticResource MutedTextBrush}" Margin="0 3 0 0" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- Selected Playset Actions -->
+        <StackPanel Grid.Row="4" Margin="0 8 0 0" Visibility="{Binding Library.IsPlaysetViewActive, Converter={StaticResource BoolToVisibilityConverter}}">
+          <UniformGrid Columns="3" Margin="0 0 0 6">
+            <Button Content="Play Set" Style="{StaticResource LiveActionButtonStyle}" MinHeight="28" Padding="4 2" FontSize="11" Margin="0 0 3 0" Command="{Binding LoadPlaysetReplaceCommand}" CommandParameter="{Binding Library.SelectedPlayset}" />
+            <Button Content="Append" Style="{StaticResource PrimaryActionButtonStyle}" MinHeight="28" Padding="4 2" FontSize="11" Margin="2 0 2 0" Command="{Binding LoadPlaysetAppendCommand}" CommandParameter="{Binding Library.SelectedPlayset}" />
+            <Button Content="Shuffle" Style="{StaticResource SecondaryButtonStyle}" MinHeight="28" Padding="4 2" FontSize="11" Margin="3 0 0 0" Command="{Binding LoadPlaysetShuffledCommand}" CommandParameter="{Binding Library.SelectedPlayset}" />
+          </UniformGrid>
+          <UniformGrid Columns="3">
+            <Button Content="Edit" Style="{StaticResource SecondaryButtonStyle}" MinHeight="26" Padding="4 2" FontSize="11" Margin="0 0 3 0" Command="{Binding Library.EditSelectedPlaysetCommand}" />
+            <Button Content="Export" Style="{StaticResource SecondaryButtonStyle}" MinHeight="26" Padding="4 2" FontSize="11" Margin="2 0 2 0" Command="{Binding Library.ExportSelectedPlaysetCommand}" />
+            <Button Content="Delete" Style="{StaticResource DangerButtonStyle}" MinHeight="26" Padding="4 2" FontSize="11" Margin="3 0 0 0" Command="{Binding Library.DeleteSelectedPlaysetCommand}" />
+          </UniformGrid>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- CENTER PANE: SEARCH, TOOLBAR, BULK BAR & VIRTUALIZED DATAGRID -->
+    <Grid Grid.Column="2">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="*" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <!-- Top Search & Filter Bar -->
+      <Grid Grid.Row="0" Margin="0 0 0 10">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="155" />
+          <ColumnDefinition Width="115" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <TextBox Grid.Column="0" Margin="0 0 8 0"
+                 ToolTip="Instant Search: Title, Artist, Album, Category, Tags, Path"
+                 Text="{Binding Library.FilterText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+        <ComboBox Grid.Column="1" Margin="0 0 8 0" ItemsSource="{Binding Library.CategoryOptions}" SelectedItem="{Binding Library.SelectedCategory, Mode=TwoWay}" />
+        <ComboBox Grid.Column="2" Margin="0 0 8 0" ItemsSource="{Binding Library.StatusFilterOptions}" SelectedItem="{Binding Library.SelectedStatusFilter, Mode=TwoWay}" />
+        <Button Grid.Column="3" Content="Clear" Style="{StaticResource SecondaryButtonStyle}" Command="{Binding Library.ClearFilterCommand}" />
+      </Grid>
+
+      <!-- Primary Library Action Toolbar -->
+      <DockPanel Grid.Row="1" Margin="0 0 0 10">
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+          <Button Content="Load to Deck" Style="{StaticResource LiveActionButtonStyle}" Margin="0 0 6 0" Command="{Binding LoadSelectedToProgramCommand}" />
+          <Button Content="+ Queue" Style="{StaticResource PrimaryActionButtonStyle}" Margin="0 0 6 0" Command="{Binding EnqueueSelectedCommand}" />
+          <Button Content="Delete" Style="{StaticResource DangerButtonStyle}" Click="DeleteSelected_Click" />
+        </StackPanel>
+
+        <WrapPanel>
+          <Button Content="Import Files..." Margin="0 0 6 4" Command="{Binding Library.ImportTrackCommand}" />
+          <Button Content="Import Folder..." Margin="0 0 6 4" Command="{Binding Library.ImportFolderCommand}" />
+          <Button Content="Rescan" Style="{StaticResource SecondaryButtonStyle}" Margin="0 0 6 4" Command="{Binding Library.RescanWatchedFoldersCommand}" />
+          <Button Content="Analyze All" Style="{StaticResource SecondaryButtonStyle}" Margin="0 0 6 4" Command="{Binding Library.AnalyzeAllUnanalyzedCommand}" />
+          <Button Content="Health Check" Style="{StaticResource SecondaryButtonStyle}" Margin="0 0 6 4" Command="{Binding Library.VerifyFilesHealthCommand}" />
+          <Button Content="Duplicates" Style="{StaticResource SecondaryButtonStyle}" Margin="0 0 6 4" Command="{Binding Library.FindDuplicatesCommand}" />
+          <Button Content="Relocate..." Style="{StaticResource SecondaryButtonStyle}" Margin="0 0 6 4" Command="{Binding Library.RelocateFolderCommand}" />
+        </WrapPanel>
+      </DockPanel>
+
+      <!-- Contextual Manual Playset Reorder Bar -->
+      <Border Grid.Row="2" Background="#12233B" BorderBrush="{StaticResource PrimaryBrush}" BorderThickness="1" CornerRadius="7" Padding="8 5" Margin="0 0 0 8"
+              Visibility="{Binding Library.IsManualPlaysetSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+        <DockPanel>
+          <TextBlock Text="MANUAL PLAYSET ORDER" FontSize="11" FontWeight="Bold" Foreground="{StaticResource PrimaryGlowBrush}" VerticalAlignment="Center" />
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+            <Button Content="▲ Move Up" Style="{StaticResource SecondaryButtonStyle}" MinHeight="24" Padding="8 2" FontSize="11" Margin="0 0 6 0" Command="{Binding Library.MovePlaysetTrackUpCommand}" />
+            <Button Content="▼ Move Down" Style="{StaticResource SecondaryButtonStyle}" MinHeight="24" Padding="8 2" FontSize="11" Margin="0 0 6 0" Command="{Binding Library.MovePlaysetTrackDownCommand}" />
+            <Button Content="Remove from Set" Style="{StaticResource DangerButtonStyle}" MinHeight="24" Padding="8 2" FontSize="11" Command="{Binding Library.RemoveSelectedFromPlaysetCommand}" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- Multi-Select Bulk Edit Bar -->
+      <Border Grid.Row="3" Background="#1D1536" BorderBrush="{StaticResource PurpleCartBrush}" BorderThickness="1" CornerRadius="7" Padding="10 6" Margin="0 0 0 8"
+              Visibility="{Binding Library.HasMultiSelection, Converter={StaticResource BoolToVisibilityConverter}}">
+        <WrapPanel VerticalAlignment="Center">
+          <TextBlock Text="{Binding Library.MultiSelectedCount, StringFormat='{}{0} SELECTED:'}" FontWeight="ExtraBold" Foreground="#E9D5FF" VerticalAlignment="Center" Margin="0 0 10 0" />
+          <ComboBox Width="115" IsEditable="True" Text="{Binding Library.BulkCategory, Mode=TwoWay}" Margin="0 0 4 0">
+            <ComboBoxItem Content="Music" />
+            <ComboBoxItem Content="Sweeper" />
+            <ComboBoxItem Content="StationId" />
+            <ComboBoxItem Content="Commercial" />
+            <ComboBoxItem Content="VoiceTrack" />
+          </ComboBox>
+          <Button Content="Set Cat" Style="{StaticResource SecondaryButtonStyle}" MinHeight="28" Padding="8 2" Margin="0 0 10 0" Command="{Binding Library.BulkApplyCategoryCommand}" />
+          <TextBox Width="110" ToolTip="Tag to add to all selected" Text="{Binding Library.BulkTagToAdd, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" Margin="0 0 4 0" />
+          <Button Content="+ Tag" Style="{StaticResource SecondaryButtonStyle}" MinHeight="28" Padding="8 2" Margin="0 0 10 0" Command="{Binding Library.BulkAddTagCommand}" />
+          <ComboBox x:Name="BulkTargetPlaysetCombo" Width="135" ItemsSource="{Binding Library.Playsets}" DisplayMemberPath="Name" Margin="0 0 4 0" />
+          <Button Content="+ Playset" Style="{StaticResource PrimaryActionButtonStyle}" MinHeight="28" Padding="8 2" Margin="0 0 6 0" Click="BulkAddToPlayset_Click" />
+          <Button Content="Re-Analyze" Style="{StaticResource SecondaryButtonStyle}" MinHeight="28" Padding="8 2" Command="{Binding Library.ReanalyzeSelectedCommand}" />
+        </WrapPanel>
+      </Border>
+
+      <!-- Main Virtualized DataGrid -->
+      <Grid Grid.Row="4">
+        <DataGrid x:Name="LibraryDataGrid"
+                  SelectionMode="Extended" SelectionUnit="FullRow" FrozenColumnCount="2"
+                  ItemsSource="{Binding Library.ItemsView}"
+                  SelectedItem="{Binding Library.SelectedItem, Mode=TwoWay}"
+                  SelectionChanged="LibraryDataGrid_SelectionChanged"
+                  RowEditEnding="LibraryDataGrid_RowEditEnding"
+                  MouseDoubleClick="LibraryDataGrid_MouseDoubleClick">
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Title" Width="210" Binding="{Binding Title, Mode=TwoWay}" />
+            <DataGridTextColumn Header="Artist" Width="160" Binding="{Binding Artist, Mode=TwoWay}" />
+            <DataGridTextColumn Header="Len" Width="62" IsReadOnly="True" Binding="{Binding DurationText}" />
+            <DataGridTextColumn Header="BPM" Width="58" IsReadOnly="True" Binding="{Binding BpmText}" />
+            <DataGridTextColumn Header="LUFS" Width="76" IsReadOnly="True" Binding="{Binding LoudnessText}" />
+            <DataGridTextColumn Header="Category" Width="100" Binding="{Binding Category, Mode=TwoWay}" />
+            <DataGridTextColumn Header="Tags" Width="130" Binding="{Binding Tags, Mode=TwoWay}" />
+            <DataGridTextColumn Header="Status" Width="72" IsReadOnly="True" Binding="{Binding FileStatus}" />
+            <DataGridTextColumn Header="Plays" Width="54" IsReadOnly="True" Binding="{Binding PlayCount}" />
+            <DataGridTextColumn Header="Last Played" Width="125" IsReadOnly="True" Binding="{Binding LastPlayedText}" />
+            <DataGridTextColumn Header="Album" Width="150" Binding="{Binding Album, Mode=TwoWay}" />
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <Border Visibility="{Binding Library.EmptyStateVisibility}" IsHitTestVisible="False" Background="#E0090D14" CornerRadius="8">
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+            <Path Data="{StaticResource IconMusic}" Fill="{StaticResource PrimaryGlowBrush}" Width="38" Height="38" Stretch="Uniform" Margin="0 0 0 10" />
+            <TextBlock Text="{Binding Library.EmptyStateMessage}" Foreground="{StaticResource MutedTextBrush}" FontSize="14" TextWrapping="Wrap" MaxWidth="360" TextAlignment="Center" />
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <!-- Bottom Status & Background Analyzer Bar -->
+      <DockPanel Grid.Row="5" Margin="0 8 0 0">
+        <TextBlock Text="{Binding Library.LibrarySummary}" FontWeight="Bold" Foreground="{StaticResource PrimaryGlowBrush}" FontSize="12" Margin="0 0 14 0" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding Library.ImportStatus}" Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+          <ProgressBar Width="80" Height="10" IsIndeterminate="True" Foreground="{StaticResource PurpleCartBrush}" Background="#1E293B" Margin="0 0 8 0"
+                       Visibility="{Binding Library.IsAnalyzing, Converter={StaticResource BoolToVisibilityConverter}}" />
+          <TextBlock Text="{Binding Library.AnalysisStatus}" FontSize="11" Foreground="{StaticResource MutedTextBrush}" />
+        </StackPanel>
+      </DockPanel>
+    </Grid>
+
+    <!-- RIGHT INSPECTOR: TRACK DETAILS, CUE EDITOR & PFL AUDITION -->
+    <Border Grid.Column="4" Style="{StaticResource PanelBorderStyle}">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel>
+          <TextBlock Text="TRACK INSPECTOR &amp; CUES" FontSize="13" FontWeight="ExtraBold" Foreground="{StaticResource PrimaryGlowBrush}" Margin="0 0 0 10" />
+
+          <TextBlock Text="Select a track from the library to inspect metadata, edit cue points, or audition via PFL."
+                     TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}" FontSize="12"
+                     Visibility="{Binding Library.HasSelectedItem, Converter={StaticResource InverseBoolToVisibilityConverter}}" />
+
+          <StackPanel Visibility="{Binding Library.HasSelectedItem, Converter={StaticResource BoolToVisibilityConverter}}">
+            <!-- Waveform Preview -->
+            <controls:WaveformCueControl Height="56" Margin="0 0 0 10"
+                                         WaveformPeaks="{Binding Library.SelectedItem.DecodedWaveformPeaks}"
+                                         DurationSeconds="{Binding Library.SelectedItem.Duration.TotalSeconds}" />
+
+            <!-- AutoMix Intelligence Badges -->
+            <Border Background="{StaticResource PanelAltBrush}" BorderBrush="{StaticResource BorderBrushSoft}" BorderThickness="1" CornerRadius="7" Padding="9" Margin="0 0 0 10">
+              <StackPanel>
+                <DockPanel Margin="0 0 0 4">
+                  <TextBlock Text="BPM:" FontSize="11" Foreground="{StaticResource MutedTextBrush}" />
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding Library.SelectedItem.BpmText}" FontFamily="Consolas" FontWeight="Bold" Foreground="{StaticResource LiveGreenGlowBrush}" />
+                </DockPanel>
+                <DockPanel Margin="0 0 0 4">
+                  <TextBlock Text="Loudness:" FontSize="11" Foreground="{StaticResource MutedTextBrush}" />
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding Library.SelectedItem.LoudnessText}" FontFamily="Consolas" FontWeight="Bold" Foreground="{StaticResource AccentBrush}" />
+                </DockPanel>
+                <DockPanel>
+                  <TextBlock Text="Acoustic Edges:" FontSize="11" Foreground="{StaticResource MutedTextBrush}" />
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding Library.SelectedItem.EdgeProfileText}" FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" />
+                </DockPanel>
+              </StackPanel>
+            </Border>
+
+            <!-- PFL Audition Buttons -->
+            <UniformGrid Columns="3" Margin="0 0 0 12">
+              <Button Content="Listen PFL" Style="{StaticResource PrimaryActionButtonStyle}" MinHeight="28" Padding="4 2" FontSize="11" Margin="0 0 4 0" Command="{Binding Library.AuditionSelectedCommand}" />
+              <Button Content="Stop PFL" Style="{StaticResource SecondaryButtonStyle}" MinHeight="28" Padding="4 2" FontSize="11" Margin="2 0 2 0" Command="{Binding Library.StopAuditionCommand}" />
+              <Button Content="Analyze" Style="{StaticResource SecondaryButtonStyle}" MinHeight="28" Padding="4 2" FontSize="11" Margin="4 0 0 0" Command="{Binding Library.ReanalyzeSelectedCommand}" />
+            </UniformGrid>
+
+            <!-- Metadata Fields -->
+            <TextBlock Text="Title" Style="{StaticResource LabelStyle}" FontSize="11" Margin="0 0 0 3" />
+            <TextBox Text="{Binding Library.SelectedItem.Title, Mode=TwoWay}" Margin="0 0 0 8" />
+
+            <TextBlock Text="Artist" Style="{StaticResource LabelStyle}" FontSize="11" Margin="0 0 0 3" />
+            <TextBox Text="{Binding Library.SelectedItem.Artist, Mode=TwoWay}" Margin="0 0 0 8" />
+
+            <TextBlock Text="Album" Style="{StaticResource LabelStyle}" FontSize="11" Margin="0 0 0 3" />
+            <TextBox Text="{Binding Library.SelectedItem.Album, Mode=TwoWay}" Margin="0 0 0 8" />
+
+            <Grid Margin="0 0 0 8">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="8" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
+              <StackPanel Grid.Column="0">
+                <TextBlock Text="Category" Style="{StaticResource LabelStyle}" FontSize="11" Margin="0 0 0 3" />
+                <TextBox Text="{Binding Library.SelectedItem.Category, Mode=TwoWay}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Text="Tags" Style="{StaticResource LabelStyle}" FontSize="11" Margin="0 0 0 3" />
+                <TextBox Text="{Binding Library.SelectedItem.Tags, Mode=TwoWay}" />
+              </StackPanel>
+            </Grid>
+
+            <!-- Explicit Cue Point Overrides (seconds) -->
+            <TextBlock Text="MANUAL CUE OVERRIDES (SECONDS)" FontSize="10" FontWeight="Bold" Foreground="{StaticResource WarningAmberBrush}" Margin="0 6 0 6" />
+            <UniformGrid Columns="2" Margin="0 0 0 10">
+              <StackPanel Margin="0 0 4 6">
+                <TextBlock Text="Start Cue" FontSize="10" Foreground="{StaticResource MutedTextBrush}" Margin="0 0 0 2" />
+                <TextBox Text="{Binding Library.SelectedItem.StartCueText, Mode=TwoWay}" ToolTip="e.g. 0.5s" />
+              </StackPanel>
+              <StackPanel Margin="4 0 0 6">
+                <TextBlock Text="Intro Ramp" FontSize="10" Foreground="{StaticResource MutedTextBrush}" Margin="0 0 0 2" />
+                <TextBox Text="{Binding Library.SelectedItem.IntroCueText, Mode=TwoWay}" ToolTip="Vocal start e.g. 12.0s" />
+              </StackPanel>
+              <StackPanel Margin="0 0 4 0">
+                <TextBlock Text="MixOut Segue" FontSize="10" Foreground="{StaticResource MutedTextBrush}" Margin="0 0 0 2" />
+                <TextBox Text="{Binding Library.SelectedItem.OutroCueText, Mode=TwoWay}" ToolTip="AutoMix segue anchor" />
+              </StackPanel>
+              <StackPanel Margin="4 0 0 0">
+                <TextBlock Text="End Cue" FontSize="10" Foreground="{StaticResource MutedTextBrush}" Margin="0 0 0 2" />
+                <TextBox Text="{Binding Library.SelectedItem.EndCueText, Mode=TwoWay}" ToolTip="Hard end trim" />
+              </StackPanel>
+            </UniformGrid>
+
+            <UniformGrid Columns="2" Margin="0 0 0 10">
+              <Button Content="Save to DB" Style="{StaticResource PrimaryActionButtonStyle}" MinHeight="30" Margin="0 0 4 0" Command="{Binding Library.SaveSelectedItemCommand}" />
+              <Button Content="Write File Tags" Style="{StaticResource SecondaryButtonStyle}" MinHeight="30" Margin="4 0 0 0" Command="{Binding Library.WriteTagsToFileCommand}" />
+            </UniformGrid>
+
+            <TextBlock Text="FILE PATH" FontSize="10" FontWeight="Bold" Foreground="{StaticResource MutedTextBrush}" Margin="0 4 0 2" />
+            <TextBlock Text="{Binding Library.SelectedItem.FilePath}" FontSize="10" Foreground="{StaticResource SubtleTextBrush}" TextWrapping="Wrap" />
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+  </Grid>
+</UserControl>
